@@ -14,6 +14,10 @@ function isValidId(id: string) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export const UserRepo = {
   async findById(id: string) {
     if (!isValidId(id)) return null;
@@ -21,7 +25,14 @@ export const UserRepo = {
   },
 
   async findByUsername(username: string) {
-    return toPlain(await UserModel.findOne({ username, deletedAt: null }));
+    const trimmedUsername = username.trim();
+    const exactUser = await UserModel.findOne({ username: trimmedUsername, deletedAt: null });
+    if (exactUser) return toPlain(exactUser);
+
+    return toPlain(await UserModel.findOne({
+      username: { $regex: new RegExp(`^${escapeRegExp(trimmedUsername)}$`, 'i') },
+      deletedAt: null,
+    }));
   },
 
   async findByEmail(email: string) {
