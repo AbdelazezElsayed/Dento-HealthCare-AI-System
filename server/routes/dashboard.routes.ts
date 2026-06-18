@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { DiagnosisRecordModel } from '../mongodb';
+import { DiagnosisRecordModel, PaymentModel, VisitSessionModel } from '../mongodb';
 import { TreatmentPlanRepo } from '../repositories/clinic.repo';
 import { MedicationRepo } from '../repositories/medication.repo';
 import { storage } from '../storage';
@@ -49,6 +49,83 @@ function isMedicationActiveForDate(medication: any, date = new Date()) {
     }
 
     return true;
+}
+
+function getDateKey(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Cairo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date);
+
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getMonthRange(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Africa/Cairo',
+        year: 'numeric',
+        month: 'numeric',
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const year = Number(values.year);
+    const month = Number(values.month);
+    const start = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    return { start, end };
+}
+
+function isActiveAppointment(appointment: any) {
+    return appointment.status !== 'cancelled' && appointment.status !== 'no-show';
+}
+
+function isWaitingAppointment(appointment: any) {
+    return ['waiting', 'checked_in', 'in_progress', 'pending'].includes(appointment.status);
+}
+
+async function enrichDoctorAppointment(appointment: any) {
+    const [patient, clinic] = await Promise.all([
+        appointment.patientId ? storage.getPatient(appointment.patientId) : null,
+        appointment.clinicId ? storage.getClinic(appointment.clinicId) : null,
+    ]);
+
+    return {
+        id: appointment.id || appointment._id?.toString?.(),
+        time: appointment.time,
+        date: appointment.date,
+        status: appointment.status,
+        type: appointment.type || appointment.appointmentType || null,
+        notes: appointment.notes || null,
+        patientName: patient?.fullName || patient?.name || null,
+        patientId: appointment.patientId || null,
+        clinicName: clinic?.nameAr || clinic?.name || clinic?.nameEn || null,
+    };
+}
+
+async function getDoctorRevenue(doctorId: string, startDate: string, endDate: string) {
+    const sessions = await VisitSessionModel.find({
+        doctorId,
+        sessionDate: { $gte: startDate, $lte: endDate },
+    }).select('_id');
+
+    const sessionIds = sessions.map((session) => session._id.toString());
+    if (sessionIds.length === 0) {
+        return { amount: 0, available: true };
+    }
+
+    const payments = await PaymentModel.find({
+        sessionId: { $in: sessionIds },
+        status: 'paid',
+    }).select('amount');
+
+    return {
+        amount: payments.reduce((sum, payment) => sum + (payment.amount || 0), 0),
+        available: true,
+    };
 }
 
 function normalizeSuggestedClinic(value: any) {
@@ -185,6 +262,88 @@ router.get('/patient-summary', requireAuth, async (req, res) => {
         res.status(500).json({
             message: 'تعذر تحميل بيانات لوحة التحكم',
             messageEn: 'Unable to load patient dashboard data',
+        });
+    }
+});
+
+// Doctor dashboard summary - current doctor's own data only
+router.get('/doctor-summary', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId!;
+        const userType = req.session.userType;
+
+        if (userType !== 'doctor' && userType !== 'graduate') {
+            return res.status(403).json({
+                message: 'هذه البيانات متاحة للأطباء فقط',
+                messageEn: 'Doctor dashboard data is available to doctors only',
+            });
+        }
+
+        const doctor = await storage.getDoctorByUserId(userId);
+        if (!doctor?.id) {
+            return res.status(404).json({
+                message: 'لم يتم العثور على ملف الطبيب',
+                messageEn: 'Doctor profile not found',
+            });
+        }
+
+        const today = getDateKey();
+        const monthRange = getMonthRange();
+        const [todayAppointmentsRaw, notifications, unreadNotifications, todayRevenue, monthRevenue] = await Promise.all([
+            storage.getAppointmentsByDoctorAndDate(doctor.id, today),
+            storage.getNotifications(userId),
+            storage.getUnreadNotificationCount(userId),
+            getDoctorRevenue(doctor.id, today, today),
+            getDoctorRevenue(doctor.id, monthRange.start, monthRange.end),
+        ]);
+
+        const activeTodayAppointments = todayAppointmentsRaw.filter(isActiveAppointment);
+        const uniquePatientIds = new Set(
+            activeTodayAppointments
+                .map((appointment: any) => appointment.patientId)
+                .filter(Boolean)
+        );
+        const waitingCount = activeTodayAppointments.filter(isWaitingAppointment).length;
+        const todayAppointments = await Promise.all(
+            activeTodayAppointments
+                .sort((a: any, b: any) => String(a.time || '').localeCompare(String(b.time || '')))
+                .map(enrichDoctorAppointment)
+        );
+
+        res.json({
+            doctor: {
+                id: doctor.id,
+                fullName: doctor.fullName || doctor.name || null,
+                specialization: doctor.specialization || null,
+                clinicId: doctor.clinicId || null,
+            },
+            summary: {
+                todayPatientsCount: uniquePatientIds.size,
+                todayAppointmentsCount: activeTodayAppointments.length,
+                waitingCount,
+                todayRevenue: todayRevenue.amount,
+                todayRevenueAvailable: todayRevenue.available,
+                monthRevenue: monthRevenue.amount,
+                monthRevenueAvailable: monthRevenue.available,
+                unreadNotificationsCount: unreadNotifications,
+            },
+            todayAppointments,
+            notifications: notifications.slice(0, 5).map((notification: any) => ({
+                id: notification.id || notification._id?.toString?.(),
+                title: notification.title,
+                message: notification.message,
+                titleEn: notification.titleEn || null,
+                messageEn: notification.messageEn || null,
+                type: notification.type,
+                read: notification.read,
+                createdAt: notification.createdAt,
+            })),
+        });
+    } catch (err: any) {
+        console.error('Doctor dashboard summary error:', err);
+        res.status(500).json({
+            message: 'تعذر تحميل بيانات لوحة الطبيب',
+            messageEn: 'Unable to load doctor dashboard data',
         });
     }
 });

@@ -1,9 +1,19 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Users, DollarSign, Bell, Activity, TrendingUp, Clock, AlertCircle } from "lucide-react";
+import {
+    Activity,
+    AlertCircle,
+    Bell,
+    Calendar,
+    Clock,
+    DollarSign,
+    RefreshCw,
+    TrendingUp,
+    Users,
+} from "lucide-react";
 import { apiGet } from "@/services/api";
 
 interface MedicalStaffDashboardProps {
@@ -14,72 +24,86 @@ interface MedicalStaffDashboardProps {
     language?: "ar" | "en";
 }
 
+interface DoctorDashboardAppointment {
+    id: string;
+    time?: string | null;
+    date?: string | null;
+    status?: string | null;
+    type?: string | null;
+    patientName?: string | null;
+    clinicName?: string | null;
+}
+
+interface DoctorDashboardNotification {
+    id: string;
+    title?: string | null;
+    message?: string | null;
+    titleEn?: string | null;
+    messageEn?: string | null;
+    type?: string | null;
+    read?: boolean;
+    createdAt?: string | Date | null;
+}
+
+interface DoctorDashboardSummary {
+    doctor: {
+        id: string;
+        fullName?: string | null;
+        specialization?: string | null;
+        clinicId?: string | null;
+    };
+    summary: {
+        todayPatientsCount: number;
+        todayAppointmentsCount: number;
+        waitingCount: number;
+        todayRevenue: number;
+        todayRevenueAvailable: boolean;
+        monthRevenue: number;
+        monthRevenueAvailable: boolean;
+        unreadNotificationsCount: number;
+    };
+    todayAppointments: DoctorDashboardAppointment[];
+    notifications: DoctorDashboardNotification[];
+}
+
 export default function MedicalStaffDashboard({
     userName,
     userType,
     userId,
     onNavigate,
-    language = "ar"
+    language = "ar",
 }: MedicalStaffDashboardProps) {
     const today = new Date();
     const isDoctor = userType === "doctor";
-
-    // State for real data
-    const [todayAppointments, setTodayAppointments] = useState<any[]>([]);
+    const isMedicalStaff = userType === "doctor" || userType === "graduate";
+    const [dashboard, setDashboard] = useState<DoctorDashboardSummary | null>(null);
     const [loading, setLoading] = useState(true);
-    const [stats, setStats] = useState({
-        totalPatients: 0,
-        pendingPatients: 0,
-        todayRevenue: 0,
-        monthlyRevenue: 0
-    });
+    const [error, setError] = useState<string | null>(null);
 
-    // Fetch real data from API
+    const fetchData = async () => {
+        if (!isMedicalStaff) {
+            setLoading(false);
+            setError(language === "ar" ? "هذه اللوحة متاحة للفريق الطبي فقط" : "This dashboard is only available to medical staff");
+            return;
+        }
+
+        try {
+            setLoading(true);
+            setError(null);
+            const response = await apiGet<DoctorDashboardSummary>("/dashboard/doctor-summary");
+            setDashboard(response.data);
+        } catch (err) {
+            console.error("Failed to fetch doctor dashboard data:", err);
+            setError(language === "ar" ? "تعذر تحميل بيانات لوحة الطبيب" : "Unable to load doctor dashboard data");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-
-                // Fetch today's appointments
-                const appointmentsRes = await apiGet<any>('/appointments');
-                if (appointmentsRes.success && appointmentsRes.data) {
-                    const today = new Date();
-                    const todayStr = today.toISOString().split('T')[0];
-
-                    // Filter appointments for today only
-                    const todayAppts = appointmentsRes.data.filter((apt: any) => {
-                        const aptDate = new Date(apt.date).toISOString().split('T')[0];
-                        return aptDate === todayStr;
-                    });
-
-                    setTodayAppointments(todayAppts);
-
-                    // Calculate stats
-                    const pending = todayAppts.filter((apt: any) => apt.status === 'scheduled').length;
-                    setStats(prev => ({
-                        ...prev,
-                        totalPatients: todayAppts.length,
-                        pendingPatients: pending
-                    }));
-                }
-
-                // TODO: Fetch revenue data when endpoint is available
-                // For now, keep mock revenue data
-                setStats(prev => ({
-                    ...prev,
-                    todayRevenue: isDoctor ? 3500 : 0,
-                    monthlyRevenue: isDoctor ? 45000 : 0
-                }));
-
-            } catch (error) {
-                console.error('Failed to fetch dashboard data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
-    }, [userId, isDoctor]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId, userType, language]);
 
     const dayNames = language === "ar"
         ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
@@ -92,41 +116,87 @@ export default function MedicalStaffDashboard({
     const greeting = () => {
         const hour = today.getHours();
         if (language === "ar") {
-            if (hour < 12) return "صباح الخير";
-            if (hour < 18) return "مساء الخير";
-            return "مساء الخير";
-        } else {
-            if (hour < 12) return "Good Morning";
-            if (hour < 18) return "Good Afternoon";
-            return "Good Evening";
+            return hour < 12 ? "صباح الخير" : "مساء الخير";
         }
+        if (hour < 12) return "Good Morning";
+        if (hour < 18) return "Good Afternoon";
+        return "Good Evening";
     };
 
-    const notifications = [
-        { id: "1", type: "urgent", message: "مريض طوارئ بانتظارك - غرفة 3", time: "منذ 5 دقائق" },
-        { id: "2", type: "info", message: "تم إلغاء موعد المريض محمد علي", time: "منذ 20 دقيقة" },
-        { id: "3", type: "reminder", message: "اجتماع فريق طبي الساعة 4 مساءً", time: "منذ ساعة" },
-    ];
+    const doctorName = dashboard?.doctor.fullName || userName;
+    const summary = dashboard?.summary;
+    const todayAppointments = dashboard?.todayAppointments ?? [];
+    const notifications = dashboard?.notifications ?? [];
 
     const quickActions = [
         { icon: <Calendar className="w-5 h-5" />, label: language === "ar" ? "مواعيد اليوم" : "Today's Schedule", page: "today-appointments", color: "bg-teal-500" },
         { icon: <Users className="w-5 h-5" />, label: language === "ar" ? "المرضى" : "Patients", page: "patients", color: "bg-blue-500" },
-        { icon: <Activity className="w-5 h-5" />, label: language === "ar" ? "التحليلات" : "Analytics", page: "reports", color: "bg-purple-500" },
+        { icon: <Activity className="w-5 h-5" />, label: language === "ar" ? "التقارير" : "Reports", page: "reports", color: "bg-purple-500" },
         ...(isDoctor ? [{ icon: <DollarSign className="w-5 h-5" />, label: language === "ar" ? "الأسعار" : "Pricing", page: "price-management", color: "bg-amber-500" }] : []),
     ];
 
-    const getStatusBadge = (status: string) => {
+    const formatCurrency = (amount?: number, available = true) => {
+        if (!available) return language === "ar" ? "غير متاح" : "Unavailable";
+        return new Intl.NumberFormat(language === "ar" ? "ar-EG" : "en-US", {
+            maximumFractionDigits: 0,
+        }).format(amount ?? 0);
+    };
+
+    const formatNotificationDate = (value?: string | Date | null) => {
+        if (!value) return language === "ar" ? "تاريخ غير محدد" : "Unknown date";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return language === "ar" ? "تاريخ غير محدد" : "Unknown date";
+        return date.toLocaleString(language === "ar" ? "ar-EG" : "en-US", {
+            dateStyle: "medium",
+            timeStyle: "short",
+        });
+    };
+
+    const getStatusBadge = (status?: string | null) => {
         switch (status) {
             case "completed":
                 return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30">{language === "ar" ? "مكتمل" : "Done"}</Badge>;
             case "in-progress":
+            case "in_progress":
+            case "checked_in":
                 return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30">{language === "ar" ? "جاري" : "Active"}</Badge>;
+            case "scheduled":
+            case "confirmed":
+                return <Badge className="bg-teal-100 text-teal-700 dark:bg-teal-900/30">{language === "ar" ? "مجدول" : "Scheduled"}</Badge>;
+            case "waiting":
             case "pending":
-                return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30">{language === "ar" ? "قادم" : "Pending"}</Badge>;
+                return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30">{language === "ar" ? "في الانتظار" : "Waiting"}</Badge>;
             default:
-                return null;
+                return <Badge variant="outline">{language === "ar" ? "غير محدد" : "Unknown"}</Badge>;
         }
     };
+
+    const getNotificationText = (notification: DoctorDashboardNotification) => {
+        if (language === "en") {
+            return notification.messageEn || notification.message || notification.titleEn || notification.title || "Notification";
+        }
+        return notification.message || notification.title || notification.messageEn || notification.titleEn || "إشعار";
+    };
+
+    if (error && !loading) {
+        return (
+            <Card className="max-w-2xl mx-auto">
+                <CardContent className="p-8 text-center space-y-4">
+                    <AlertCircle className="w-10 h-10 text-red-600 mx-auto" />
+                    <div>
+                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                            {language === "ar" ? "تعذر تحميل لوحة الطبيب" : "Unable to load dashboard"}
+                        </h2>
+                        <p className="text-sm text-muted-foreground mt-1">{error}</p>
+                    </div>
+                    <Button onClick={fetchData} variant="outline" className="gap-2">
+                        <RefreshCw className="w-4 h-4" />
+                        {language === "ar" ? "إعادة المحاولة" : "Retry"}
+                    </Button>
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <motion.div
@@ -135,37 +205,42 @@ export default function MedicalStaffDashboard({
             transition={{ duration: 0.5 }}
             className="space-y-6"
         >
-            {/* Welcome Header */}
             <motion.div
                 initial={{ scale: 0.95 }}
                 animate={{ scale: 1 }}
                 className="bg-gradient-to-l from-teal-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg"
             >
-                <div className="flex items-center justify-between">
-                    <div>
+                <div className="flex items-center justify-between gap-4">
+                    <div className="text-start">
                         <p className="text-teal-100 text-sm mb-1">
                             {dayNames[today.getDay()]}، {today.getDate()} {monthNames[today.getMonth()]} {today.getFullYear()}
                         </p>
                         <h1 className="text-2xl md:text-3xl font-bold mb-2">
-                            {greeting()}، {isDoctor ? "دكتور" : ""} {userName}! 👨‍⚕️
+                            {greeting()}، {isDoctor && language === "ar" ? "دكتور " : ""}{doctorName}
                         </h1>
                         <p className="text-teal-100">
-                            {language === "ar"
-                                ? `لديك ${stats.pendingPatients} ${stats.pendingPatients === 1 ? "مريض" : "مرضى"} في الانتظار`
-                                : `You have ${stats.pendingPatients} patient${stats.pendingPatients > 1 ? "s" : ""} waiting`}
+                            {loading
+                                ? language === "ar" ? "جاري تحميل بياناتك الفعلية..." : "Loading your real dashboard data..."
+                                : summary?.todayAppointmentsCount
+                                    ? language === "ar"
+                                        ? `لديك ${summary.todayAppointmentsCount} موعد اليوم، منهم ${summary.waitingCount} في الانتظار`
+                                        : `You have ${summary.todayAppointmentsCount} appointment(s) today, ${summary.waitingCount} waiting`
+                                    : language === "ar"
+                                        ? "لا توجد مواعيد مسجلة لك اليوم"
+                                        : "No appointments assigned to you today"}
                         </p>
                     </div>
-                    <div className="hidden md:block text-6xl">👨‍⚕️</div>
+                    <div className="hidden md:flex w-16 h-16 rounded-full bg-white/20 items-center justify-center">
+                        <Activity className="w-8 h-8" />
+                    </div>
                 </div>
             </motion.div>
 
-            {/* Status Cards */}
             <div className={`grid grid-cols-2 ${isDoctor ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
-                {/* Today's Patients */}
                 <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all text-right w-full"
+                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all text-start w-full"
                     onClick={() => onNavigate?.("today-appointments")}
                 >
                     <div className="flex items-center gap-3 mb-3">
@@ -176,17 +251,18 @@ export default function MedicalStaffDashboard({
                             {language === "ar" ? "مرضى اليوم" : "Today's Patients"}
                         </span>
                     </div>
-                    <p className="text-3xl font-bold text-slate-800 dark:text-white">{loading ? "..." : stats.totalPatients}</p>
+                    <p className="text-3xl font-bold text-slate-800 dark:text-white">
+                        {loading ? "..." : summary?.todayPatientsCount ?? 0}
+                    </p>
                     <p className="text-sm text-teal-600 dark:text-teal-400">
-                        {stats.pendingPatients} {language === "ar" ? "في الانتظار" : "waiting"}
+                        {language === "ar" ? "مرضى مرتبطون بمواعيدك" : "patients from your schedule"}
                     </p>
                 </motion.button>
 
-                {/* Pending Queue */}
                 <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all text-right w-full"
+                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all text-start w-full"
                     onClick={() => onNavigate?.("today-appointments")}
                 >
                     <div className="flex items-center gap-3 mb-3">
@@ -197,18 +273,16 @@ export default function MedicalStaffDashboard({
                             {language === "ar" ? "قائمة الانتظار" : "Queue"}
                         </span>
                     </div>
-                    <p className="text-3xl font-bold text-slate-800 dark:text-white">{loading ? "..." : stats.pendingPatients}</p>
-                    <p className="text-sm text-yellow-600 dark:text-yellow-400">{language === "ar" ? "مريض" : "patients"}</p>
+                    <p className="text-3xl font-bold text-slate-800 dark:text-white">
+                        {loading ? "..." : summary?.waitingCount ?? 0}
+                    </p>
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                        {language === "ar" ? "حالات بانتظار الإجراء" : "waiting/in-progress cases"}
+                    </p>
                 </motion.button>
 
-                {/* Today Revenue (Doctor only) */}
                 {isDoctor && (
-                    <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer hover:shadow-md transition-all text-right w-full"
-                        onClick={() => onNavigate?.("financial")}
-                    >
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 text-start">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
                                 <DollarSign className="w-5 h-5 text-emerald-600" />
@@ -217,14 +291,15 @@ export default function MedicalStaffDashboard({
                                 {language === "ar" ? "إيرادات اليوم" : "Today's Revenue"}
                             </span>
                         </div>
-                        <p className="text-3xl font-bold text-slate-800 dark:text-white">{stats.todayRevenue}</p>
+                        <p className="text-3xl font-bold text-slate-800 dark:text-white">
+                            {loading ? "..." : formatCurrency(summary?.todayRevenue, summary?.todayRevenueAvailable)}
+                        </p>
                         <p className="text-sm text-emerald-600 dark:text-emerald-400">{language === "ar" ? "جنيه مصري" : "EGP"}</p>
-                    </motion.button>
+                    </div>
                 )}
 
-                {/* Monthly Revenue (Doctor only) */}
                 {isDoctor && (
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 text-right">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 text-start">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
                                 <TrendingUp className="w-5 h-5 text-purple-600" />
@@ -233,16 +308,16 @@ export default function MedicalStaffDashboard({
                                 {language === "ar" ? "إيرادات الشهر" : "Monthly Revenue"}
                             </span>
                         </div>
-                        <p className="text-3xl font-bold text-slate-800 dark:text-white">{stats.monthlyRevenue}</p>
+                        <p className="text-3xl font-bold text-slate-800 dark:text-white">
+                            {loading ? "..." : formatCurrency(summary?.monthRevenue, summary?.monthRevenueAvailable)}
+                        </p>
                         <p className="text-sm text-purple-600 dark:text-purple-400">
-                            <TrendingUp className="w-3 h-3 inline mr-1" />
-                            +12% {language === "ar" ? "من الشهر الماضي" : "from last month"}
+                            {language === "ar" ? "من الجلسات المدفوعة المرتبطة بك" : "from paid sessions linked to you"}
                         </p>
                     </div>
                 )}
             </div>
 
-            {/* Quick Actions */}
             <Card>
                 <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -252,9 +327,9 @@ export default function MedicalStaffDashboard({
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {quickActions.map((action, index) => (
+                        {quickActions.map((action) => (
                             <Button
-                                key={index}
+                                key={action.page}
                                 variant="outline"
                                 className="h-auto flex-col gap-2 p-4"
                                 onClick={() => onNavigate?.(action.page)}
@@ -269,19 +344,19 @@ export default function MedicalStaffDashboard({
                 </CardContent>
             </Card>
 
-            {/* Today's Schedule */}
             <Card>
                 <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">
-                            {language === "ar" ? "📅 جدول اليوم" : "📅 Today's Schedule"}
+                    <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Calendar className="w-5 h-5" />
+                            {language === "ar" ? "جدول اليوم" : "Today's Schedule"}
                         </CardTitle>
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => onNavigate?.("today-appointments")}
                         >
-                            {language === "ar" ? "عرض الكل ←" : "View All →"}
+                            {language === "ar" ? "عرض الكل" : "View All"}
                         </Button>
                     </div>
                 </CardHeader>
@@ -293,36 +368,32 @@ export default function MedicalStaffDashboard({
                     ) : todayAppointments.length === 0 ? (
                         <div className="text-center p-8 text-muted-foreground">
                             <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                            <p>{language === "ar" ? "لا توجد مواعيد اليوم" : "No appointments today"}</p>
+                            <p>{language === "ar" ? "لا توجد مواعيد مسجلة لك اليوم" : "No appointments assigned to you today"}</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
                             {todayAppointments.map((appointment) => {
-                                // Format appointment data
-                                const patient = appointment.patientId;
-                                const patientName = typeof patient === 'object' ? patient.fullName : 'مريض';
-                                const time = appointment.time || 'غير محدد';
-                                const clinic = appointment.clinicId?.name || 'عيادة';
-                                const status = appointment.status === 'completed' ? 'completed' :
-                                    appointment.status === 'scheduled' ? 'pending' : 'in-progress';
+                                const patientName = appointment.patientName || (language === "ar" ? "مريض غير محدد" : "Unknown patient");
+                                const clinicName = appointment.clinicName || (language === "ar" ? "عيادة غير محددة" : "Unknown clinic");
+                                const time = appointment.time || (language === "ar" ? "وقت غير محدد" : "Unknown time");
 
                                 return (
                                     <div
-                                        key={appointment._id || appointment.id}
-                                        className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                        key={appointment.id}
+                                        className="flex items-center justify-between gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-semibold">
-                                                {patientName[0]?.toUpperCase() || 'P'}
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-semibold shrink-0">
+                                                {patientName[0]?.toUpperCase() || "P"}
                                             </div>
-                                            <div>
-                                                <p className="font-semibold text-slate-800 dark:text-white">{patientName}</p>
-                                                <p className="text-xs text-slate-500">{clinic}</p>
+                                            <div className="min-w-0 text-start">
+                                                <p className="font-semibold text-slate-800 dark:text-white truncate">{patientName}</p>
+                                                <p className="text-xs text-slate-500 truncate">{clinicName}</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 shrink-0">
                                             <span className="text-sm text-slate-600 dark:text-slate-400">{time}</span>
-                                            {getStatusBadge(status)}
+                                            {getStatusBadge(appointment.status)}
                                         </div>
                                     </div>
                                 );
@@ -332,34 +403,54 @@ export default function MedicalStaffDashboard({
                 </CardContent>
             </Card>
 
-            {/* Notifications */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                        <Bell className="w-5 h-5" />
-                        {language === "ar" ? "الإشعارات" : "Notifications"}
-                    </CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Bell className="w-5 h-5" />
+                            {language === "ar" ? "الإشعارات" : "Notifications"}
+                        </CardTitle>
+                        {!loading && (
+                            <Badge variant="outline">
+                                {summary?.unreadNotificationsCount ?? 0} {language === "ar" ? "غير مقروء" : "unread"}
+                            </Badge>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-3">
-                        {notifications.map((notif) => (
-                            <div
-                                key={notif.id}
-                                className={`flex items-start gap-3 p-3 rounded-lg ${notif.type === "urgent"
-                                    ? "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
-                                    : "bg-slate-50 dark:bg-slate-800/50"
-                                    }`}
-                            >
-                                {notif.type === "urgent" && <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />}
-                                <div className="flex-1">
-                                    <p className={`text-sm ${notif.type === "urgent" ? "text-red-900 dark:text-red-100 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>
-                                        {notif.message}
-                                    </p>
-                                    <p className="text-xs text-slate-500 mt-1">{notif.time}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    {loading ? (
+                        <div className="flex items-center justify-center p-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                        </div>
+                    ) : notifications.length === 0 ? (
+                        <div className="text-center p-8 text-muted-foreground">
+                            <Bell className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p>{language === "ar" ? "لا توجد إشعارات جديدة" : "No notifications"}</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {notifications.map((notification) => {
+                                const isUrgent = notification.type === "urgent" || notification.type === "emergency";
+                                return (
+                                    <div
+                                        key={notification.id}
+                                        className={`flex items-start gap-3 p-3 rounded-lg ${isUrgent
+                                            ? "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+                                            : "bg-slate-50 dark:bg-slate-800/50"
+                                            }`}
+                                    >
+                                        {isUrgent && <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />}
+                                        <div className="flex-1 text-start">
+                                            <p className={`text-sm ${isUrgent ? "text-red-900 dark:text-red-100 font-semibold" : "text-slate-700 dark:text-slate-300"}`}>
+                                                {getNotificationText(notification)}
+                                            </p>
+                                            <p className="text-xs text-slate-500 mt-1">{formatNotificationDate(notification.createdAt)}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </motion.div>
