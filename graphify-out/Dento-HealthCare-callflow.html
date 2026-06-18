@@ -1,0 +1,1911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dento-HealthCare — Complete Call Flow &amp; Architecture Documentation</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --bg: #0f172a; --surface: #1e293b; --border: #334155;
+  --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
+  --warn: #fbbf24; --err: #f87171; --ok: #34d399;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+.container { max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+h1 { font-size: 2.4rem; margin-bottom: 8px; background: linear-gradient(135deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.7rem; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 1.25rem; margin: 32px 0 12px; color: var(--accent); }
+h4 { font-size: 1.05rem; margin: 20px 0 8px; color: var(--warn); }
+p { margin: 8px 0; color: var(--muted); }
+.subtitle { color: var(--muted); font-size: 1.1rem; margin-bottom: 32px; }
+.mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 20px 0; overflow-x: auto; position: relative; }
+.mermaid.is-enhanced { padding: 0; overflow: hidden; min-height: 260px; }
+.mermaid-viewport { padding: 54px 24px 24px; overflow: hidden; cursor: grab; touch-action: none; min-height: 260px; }
+.mermaid-viewport.is-dragging { cursor: grabbing; }
+.mermaid-viewport svg { max-width: none !important; height: auto; transform-origin: 0 0; transition: transform 120ms ease; }
+.mermaid-toolbar { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 6px; background: rgba(15,23,42,0.92); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
+.mermaid-toolbar button, .mermaid-toolbar .zoom-level { height: 28px; min-width: 32px; border: 1px solid var(--border); border-radius: 6px; background: #1e293b; color: var(--text); font: 600 0.78rem system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; }
+.mermaid-toolbar button { cursor: pointer; }
+.mermaid-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+.mermaid-toolbar .zoom-level { min-width: 52px; color: var(--muted); background: transparent; }
+.call-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92rem; }
+.call-table th { background: #1a2744; color: var(--accent); text-align: left; padding: 10px 14px; border: 1px solid var(--border); }
+.call-table td { padding: 8px 14px; border: 1px solid var(--border); vertical-align: top; }
+.call-table tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+.tag-async { background: #7c3aed33; color: #a78bfa; }
+.tag-class { background: #05966933; color: var(--ok); }
+.tag-func { background: #2563eb33; color: var(--accent); }
+.tag-cmd { background: #d9770633; color: var(--warn); }
+.tag-endpoint { background: #dc262633; color: var(--err); }
+.tag-hook { background: #db277733; color: #f472b6; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 16px 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin: 16px 0; }
+.arrow-chain { font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--accent); padding: 10px; background: rgba(56,189,248,0.06); border-radius: 6px; }
+code { font-family: 'Fira Code', 'Cascadia Code', monospace; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 3px; font-size: 0.88em; }
+ul, ol { margin: 8px 0 8px 24px; color: var(--muted); }
+li { margin: 4px 0; }
+a { color: var(--accent); }
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+.nav { position: sticky; top: 0; background: var(--bg); z-index: 10; padding: 12px 0; border-bottom: 1px solid var(--border); display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9rem; }
+.nav a { text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+@media (max-width: 768px) { .container { padding: 16px; } h1 { font-size: 1.8rem; } }
+
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Dento-HealthCare — Complete Call Flow &amp; Architecture Documentation</h1>
+<p class="subtitle">Generated from graphify knowledge graph: 127 nodes, 46 edges, 98 communities. Commit: e18abe2</p>
+
+<div class="nav">
+    <a href="#overview">Architecture Overview</a>
+    <a href="#outputs-docs">Outputs &amp; Docs</a>
+    <a href="#serve-api">Serving API</a>
+    <a href="#core-system-rbac">Core System &amp; RBAC</a>
+    <a href="#ai-diagnosis-gridfs">AI Diagnosis &amp; GridFS</a>
+    <a href="#delta-university-branding">Delta University Branding</a>
+    <a href="#dulms-portal-integration">DULMS Portal Integration</a>
+    <a href="#app-branding-favicon">App Branding &amp; Favicon</a>
+    <a href="#graphify-tooling">Graphify Tooling</a>
+    <a href="#storage-data-layer">Storage &amp; Data Layer</a>
+    <a href="#theme-language-toggle">Theme &amp; Language Toggle</a>
+    <a href="#theme-toggle">Theme Toggle</a>
+    <a href="#error-boundary">Error Boundary</a>
+    <a href="#medical-staff-dashboard">Medical Staff Dashboard</a>
+    <a href="#admin-route-guard">Admin Route Guard</a>
+    <a href="#other">Other</a>
+</div>
+
+<!-- ====== Architecture Overview ====== -->
+<h2 id="overview">1. Architecture Overview</h2>
+
+<div class="mermaid">
+
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    OUTPUTS_DOCS_ED82387C("Outputs &amp; Docs<br/><small>5 nodes</small>")
+    class OUTPUTS_DOCS_ED82387C module;
+    SERVE_API_35EC8E86("Serving API<br/><small>16 nodes</small>")
+    class SERVE_API_35EC8E86 module;
+    CORE_SYSTEM_RBAC_D28A15CA("Core System &amp; RBAC<br/><small>9 nodes</small>")
+    class CORE_SYSTEM_RBAC_D28A15CA module;
+    AI_DIAGNOSIS_GRIDFS_20C21269("AI Diagnosis &amp; GridFS<br/><small>5 nodes</small>")
+    class AI_DIAGNOSIS_GRIDFS_20C21269 module;
+    DELTA_UNIVERSITY_BRANDING_CCC20AA2("Delta University Branding<br/><small>2 nodes</small>")
+    class DELTA_UNIVERSITY_BRANDING_CCC20AA2 module;
+    DULMS_PORTAL_INTEGRATION_AA29BF21("DULMS Portal Integration<br/><small>2 nodes</small>")
+    class DULMS_PORTAL_INTEGRATION_AA29BF21 module;
+    APP_BRANDING_FAVICON_FDC18ACB("App Branding &amp; Favicon<br/><small>2 nodes</small>")
+    class APP_BRANDING_FAVICON_FDC18ACB module;
+    GRAPHIFY_TOOLING_F760FDA8("Graphify Tooling<br/><small>2 nodes</small>")
+    class GRAPHIFY_TOOLING_F760FDA8 module;
+    STORAGE_DATA_LAYER_417EA229("Storage &amp; Data Layer<br/><small>2 nodes</small>")
+    class STORAGE_DATA_LAYER_417EA229 module;
+    THEME_LANGUAGE_TOGGLE_9390FEC2("Theme &amp; Language Toggle<br/><small>1 nodes</small>")
+    class THEME_LANGUAGE_TOGGLE_9390FEC2 module;
+    THEME_TOGGLE_0FE5D581("Theme Toggle<br/><small>1 nodes</small>")
+    class THEME_TOGGLE_0FE5D581 module;
+    ERROR_BOUNDARY_9F47775D("Error Boundary<br/><small>1 nodes</small>")
+    class ERROR_BOUNDARY_9F47775D module;
+    MEDICAL_STAFF_DASHBOARD_AEC1A64C("Medical Staff Dashboard<br/><small>1 nodes</small>")
+    class MEDICAL_STAFF_DASHBOARD_AEC1A64C module;
+    ADMIN_ROUTE_GUARD_676E8620("Admin Route Guard<br/><small>1 nodes</small>")
+    class ADMIN_ROUTE_GUARD_676E8620 module;
+    OTHER_D0941E68("Other<br/><small>77 nodes</small>")
+    class OTHER_D0941E68 module;
+    SERVE_API_35EC8E86 -->|contains x3| CORE_SYSTEM_RBAC_D28A15CA
+    CORE_SYSTEM_RBAC_D28A15CA -->|contains x2| AI_DIAGNOSIS_GRIDFS_20C21269
+    SERVE_API_35EC8E86 -->|contains| AI_DIAGNOSIS_GRIDFS_20C21269
+    CORE_SYSTEM_RBAC_D28A15CA -->|references| OUTPUTS_DOCS_ED82387C
+    CORE_SYSTEM_RBAC_D28A15CA -->|references| SERVE_API_35EC8E86
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h4>Architecture Layers</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>Layer</th><th>Nodes</th><th>Communities</th></tr>
+      <tr><td>Outputs &amp; Docs</td><td>5</td><td><code>3</code></td></tr><tr><td>Serving API</td><td>16</td><td><code>0, 72, 73, 74, 75, 76, 77, 78</code></td></tr><tr><td>Core System &amp; RBAC</td><td>9</td><td><code>1</code></td></tr><tr><td>AI Diagnosis &amp; GridFS</td><td>5</td><td><code>2</code></td></tr><tr><td>Delta University Branding</td><td>2</td><td><code>4</code></td></tr><tr><td>DULMS Portal Integration</td><td>2</td><td><code>5</code></td></tr><tr><td>App Branding &amp; Favicon</td><td>2</td><td><code>6</code></td></tr><tr><td>Graphify Tooling</td><td>2</td><td><code>7</code></td></tr><tr><td>Storage &amp; Data Layer</td><td>2</td><td><code>8</code></td></tr><tr><td>Theme &amp; Language Toggle</td><td>1</td><td><code>10</code></td></tr><tr><td>Theme Toggle</td><td>1</td><td><code>11</code></td></tr><tr><td>Error Boundary</td><td>1</td><td><code>12</code></td></tr><tr><td>Medical Staff Dashboard</td><td>1</td><td><code>13</code></td></tr><tr><td>Admin Route Guard</td><td>1</td><td><code>14</code></td></tr><tr><td>Other</td><td>77</td><td><code>15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 9, 90, 91, 92, 93, 94, 95, 96, 97</code></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Core Flow</h4>
+    <div class="arrow-chain">Delta University Branding -&gt; Outputs &amp; Docs -&gt; Serving API -&gt; Core System &amp; RBAC -&gt; AI Diagnosis &amp; GridFS -&gt; DULMS Portal Integration -&gt; App Branding &amp; Favicon</div>
+  </div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h4>Graph Report Highlights</h4>
+    <ul>
+      <li>127 nodes · 46 edges · 98 communities (4 shown, 94 thin omitted)</li>
+      <li>Extraction: 65% EXTRACTED · 35% INFERRED · 0% AMBIGUOUS · INFERRED: 16 edges (avg confidence: 0.85)</li>
+      <li>Token cost: 18,000 input · 2,200 output</li>
+      <li>1. `Dento-HealthCare System Overview` - 11 edges</li>
+      <li>2. `Production Readiness Audit Plan` - 8 edges</li>
+      <li>3. `AI Subsystem (Gemini 2.5 Flash Diagnosis + Chat + TTS)` - 6 edges</li>
+    </ul>
+  </div>
+</div>
+<hr>
+<!-- ====== 2. Outputs & Docs ====== -->
+<h2 id="outputs-docs">2. Outputs &amp; Docs</h2>
+<p>Outputs &amp; Docs groups implementation around design, guidelinesmd, client, arabic, mostly in design_guidelines.md, client/index.html, h.html. This section covers 5 nodes and 6 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Outputs &amp; Docs (5 nodes, 6 edges)
+    subgraph outputs_docs_design_guidelines_md_bc94f0de["design_guidelines.md"]
+        design_guidelines_designsystem_9ee46348("Design System Guidelines (Material Desi...<br/><small>design_guidelines.md</small>")
+        design_guidelines_rtl_b5bf6c7a("RTL (Right-to-Left) Layout Support<br/><small>design_guidelines.md</small>")
+        design_guidelines_typography_2183d39e("Typography System (Cairo / IBM Plex San...<br/><small>design_guidelines.md</small>")
+    end
+    client_index_html_entrypoint_00980c2e("Client HTML Entry Point (Arabic RTL)<br/><small>client/index.html</small>")
+    h_html_dashboardprototype_3bed893a("Dento AI Dashboard HTML Prototype<br/><small>h.html</small>")
+    client_index_html_entrypoint_00980c2e -->|implements| design_guidelines_rtl_b5bf6c7a
+    client_index_html_entrypoint_00980c2e -->|implements| design_guidelines_typography_2183d39e
+    design_guidelines_rtl_b5bf6c7a -->|implements| h_html_dashboardprototype_3bed893a
+    design_guidelines_designsystem_9ee46348 -->|contains| design_guidelines_rtl_b5bf6c7a
+    design_guidelines_designsystem_9ee46348 -->|contains| design_guidelines_typography_2183d39e
+    design_guidelines_designsystem_9ee46348 -->|implements| h_html_dashboardprototype_3bed893a
+    class design_guidelines_designsystem_9ee46348 concept;
+    class design_guidelines_rtl_b5bf6c7a klass;
+    class design_guidelines_typography_2183d39e klass;
+    class client_index_html_entrypoint_00980c2e entry;
+    class h_html_dashboardprototype_3bed893a klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>Client HTML Entry Point (Arabic RTL)</code><br><small style="color:var(--muted)">client/index.html</small></td>
+  <td><span class="tag tag-cmd">Entry</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Exports documentation data to a target format.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Design System Guidelines (Material Design adapted for Healthcare)</code><br><small style="color:var(--muted)">design_guidelines.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Design System Guidelines (Material Design adapted for Healthcare).</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>RTL (Right-to-Left) Layout Support</code><br><small style="color:var(--muted)">design_guidelines.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>RTL (Right-to-Left) Layout Support node in design_guidelines.md.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>Typography System (Cairo / IBM Plex Sans Arabic)</code><br><small style="color:var(--muted)">design_guidelines.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Builds dependency relationships and graph data.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>Dento AI Dashboard HTML Prototype</code><br><small style="color:var(--muted)">h.html</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Exports documentation data to a target format.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>design_guidelines.md</code></td><td>3 nodes</td></tr>
+<tr><td><code>client/index.html</code></td><td>1 nodes</td></tr>
+<tr><td><code>h.html</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: implements x4, contains x2. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 3. Serving API ====== -->
+<h2 id="serve-api">3. Serving API</h2>
+<p>Serving API groups implementation around api, client, services, types, mostly in api/types/api.types.ts, .cursor/plans/production_readiness_audit_94cff507.plan.md, services/api/README.md. This section covers 16 nodes and 9 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Serving API (16 nodes, 9 edges)
+    subgraph serve_api_api_types_api_types_ts_c777d013["api/types/api.types.ts"]
+        types_api_types_apierror_110b210c("ApiError<br/><small>api/types/api.types.ts</small>")
+        types_api_types_apiresponse_40ba4ef7("ApiResponse<br/><small>api/types/api.types.ts</small>")
+        types_api_types_filterparams_1c7583d8("FilterParams<br/><small>api/types/api.types.ts</small>")
+        types_api_types_paginatedresponse_eb2aa207("PaginatedResponse<br/><small>api/types/api.types.ts</small>")
+        types_api_types_paginationparams_5bbc3dad("PaginationParams<br/><small>api/types/api.types.ts</small>")
+        types_api_types_requestconfig_493ad7c8("RequestConfig<br/><small>api/types/api.types.ts</small>")
+        types_api_types_sortparams_1845102c("SortParams<br/><small>api/types/api.types.ts</small>")
+    end
+    subgraph serve_api_cursor_plans_production_readiness_audi_41a8f45c[".cursor/plans/production_readiness_audit_94cff507.plan.md"]
+        plans_production_readiness_audit_productionreadi_467f86ca("Production Readiness Audit Plan<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+        plans_production_readiness_audit_axios_auth_bug_254c9366("Axios Missing withCredentials Bug (C5)<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+        plans_production_readiness_audit_dual_api_client_5d9520db("Dual API Client Architecture Problem<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+    end
+    subgraph serve_api_services_api_README_md_438c436b["services/api/README.md"]
+        api_readme_apiservicearchitecture_232dfe32("API Service Architecture (Axios Layer)<br/><small>services/api/README.md</small>")
+        api_readme_responsecaching_2dcdbdb4("API Response Caching Utility<br/><small>services/api/README.md</small>")
+        api_readme_retrybackoff_4e571652("Retry with Exponential Backoff<br/><small>services/api/README.md</small>")
+    end
+    subgraph serve_api_docker_compose_yml_27f09494["docker-compose.yml"]
+        dockercompose_yml_infrastructure_752c083d("Docker Compose Infrastructure (app + mo...<br/><small>docker-compose.yml</small>")
+        dockercompose_yml_mongoservice_75e1c06b("MongoDB 7 Service (docker-compose)<br/><small>docker-compose.yml</small>")
+    end
+    attached_assets_image_404_screenshot_40f7e8cd("Dento App 404 Page Screenshot (Missing...<br/><small>attached_assets/image_1768999930604.png</small>")
+    plans_production_readiness_audit_productionreadi_467f86ca -->|references| dockercompose_yml_infrastructure_752c083d
+    api_readme_apiservicearchitecture_232dfe32 -->|part of| api_readme_responsecaching_2dcdbdb4
+    api_readme_apiservicearchitecture_232dfe32 -->|part of| api_readme_retrybackoff_4e571652
+    plans_production_readiness_audit_productionreadi_467f86ca -->|contains| plans_production_readiness_audit_axios_auth_bug_254c9366
+    plans_production_readiness_audit_productionreadi_467f86ca -->|contains| plans_production_readiness_audit_dual_api_client_5d9520db
+    dockercompose_yml_infrastructure_752c083d -->|contains| dockercompose_yml_mongoservice_75e1c06b
+    plans_production_readiness_audit_axios_auth_bug_254c9366 -->|describes problem in| api_readme_apiservicearchitecture_232dfe32
+    plans_production_readiness_audit_dual_api_client_5d9520db -->|describes problem in| api_readme_apiservicearchitecture_232dfe32
+    class types_api_types_apierror_110b210c api;
+    class types_api_types_apiresponse_40ba4ef7 api;
+    class types_api_types_filterparams_1c7583d8 klass;
+    class types_api_types_paginatedresponse_eb2aa207 klass;
+    class types_api_types_paginationparams_5bbc3dad klass;
+    class types_api_types_requestconfig_493ad7c8 klass;
+    class types_api_types_sortparams_1845102c klass;
+    class plans_production_readiness_audit_productionreadi_467f86ca concept;
+    class plans_production_readiness_audit_axios_auth_bug_254c9366 concept;
+    class plans_production_readiness_audit_dual_api_client_5d9520db concept;
+    class api_readme_apiservicearchitecture_232dfe32 concept;
+    class api_readme_responsecaching_2dcdbdb4 api;
+    class api_readme_retrybackoff_4e571652 klass;
+    class dockercompose_yml_infrastructure_752c083d concept;
+    class dockercompose_yml_mongoservice_75e1c06b klass;
+    class attached_assets_image_404_screenshot_40f7e8cd api;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>Production Readiness Audit Plan</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Production Readiness Audit Plan.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Axios Missing withCredentials Bug (C5)</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Axios Missing withCredentials Bug (C5).</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>Dual API Client Architecture Problem</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Dual API Client Architecture Problem.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>API Service Architecture (Axios Layer)</code><br><small style="color:var(--muted)">services/api/README.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing API Service Architecture (Axios Layer).</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>Retry with Exponential Backoff</code><br><small style="color:var(--muted)">services/api/README.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Retry with Exponential Backoff node in services/api/README.md.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>API Response Caching Utility</code><br><small style="color:var(--muted)">services/api/README.md</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>API Response Caching Utility node in services/api/README.md.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>Docker Compose Infrastructure (app + mongo + mongo-express)</code><br><small style="color:var(--muted)">docker-compose.yml</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Docker Compose Infrastructure (app + mongo + mongo-express).</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>MongoDB 7 Service (docker-compose)</code><br><small style="color:var(--muted)">docker-compose.yml</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>MongoDB 7 Service (docker-compose) node in docker-compose.yml.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>Dento App 404 Page Screenshot (Missing Route Bug)</code><br><small style="color:var(--muted)">attached_assets/image_1768999930604.png</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>ApiError</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ApiError node in api/types/api.types.ts.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>ApiResponse</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ApiResponse node in api/types/api.types.ts.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>FilterParams</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>FilterParams node in api/types/api.types.ts.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>PaginatedResponse</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>PaginatedResponse node in api/types/api.types.ts.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>PaginationParams</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>PaginationParams node in api/types/api.types.ts.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>RequestConfig</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Reads, resolves, or persists project configuration.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>SortParams</code><br><small style="color:var(--muted)">api/types/api.types.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>SortParams node in api/types/api.types.ts.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>api/types/api.types.ts</code></td><td>7 nodes</td></tr>
+<tr><td><code>.cursor/plans/production_readiness_audit_94cff507.plan.md</code></td><td>3 nodes</td></tr>
+<tr><td><code>services/api/README.md</code></td><td>3 nodes</td></tr>
+<tr><td><code>docker-compose.yml</code></td><td>2 nodes</td></tr>
+<tr><td><code>attached_assets/image_1768999930604.png</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x3, describes problem in x2, part of x2, references x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 4. Core System & RBAC ====== -->
+<h2 id="core-system-rbac">4. Core System &amp; RBAC</h2>
+<p>Core System &amp; RBAC groups implementation around dentomd, cursor, plans, production, mostly in dento.md, .cursor/plans/production_readiness_audit_94cff507.plan.md. This section covers 9 nodes and 9 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Core System &amp; RBAC (9 nodes, 9 edges)
+    subgraph core_system_rbac_dento_md_f3100cb8["dento.md"]
+        dento_md_notificationsystem_85a6aead("Notification System (NotificationServic...<br/><small>dento.md</small>")
+        dento_md_repositorypattern_53ea735f("Repository Pattern (Routes → Repos → Mo...<br/><small>dento.md</small>")
+        dento_md_appointmentpaymentworkflow_bd205cda("Appointment to Payment Workflow<br/><small>dento.md</small>")
+        dento_md_10clinics_4137e3ed("10 Dental Clinics (Specializations)<br/><small>dento.md</small>")
+        dento_md_rbac_677474e0("RBAC Roles and Middleware<br/><small>dento.md</small>")
+        dento_md_sessionconfig_f948f824("Session Configuration (express-session...<br/><small>dento.md</small>")
+        dento_md_systemoverview_af525e7b("Dento-HealthCare System Overview<br/><small>dento.md</small>")
+    end
+    subgraph core_system_rbac_cursor_plans_production_readine_da58aac2[".cursor/plans/production_readiness_audit_94cff507.plan.md"]
+        plans_production_readiness_audit_notification_ha_128a0f7c("Notification Architecture Half-Built<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+        plans_production_readiness_audit_phi_idor_e2d84bd6("PHI IDOR Vulnerability (C1/C2)<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+    end
+    dento_md_notificationsystem_85a6aead -->|uses| dento_md_appointmentpaymentworkflow_bd205cda
+    dento_md_repositorypattern_53ea735f -->|uses| dento_md_appointmentpaymentworkflow_bd205cda
+    class dento_md_notificationsystem_85a6aead klass;
+    class dento_md_repositorypattern_53ea735f api;
+    class dento_md_appointmentpaymentworkflow_bd205cda klass;
+    class dento_md_10clinics_4137e3ed entry;
+    class dento_md_rbac_677474e0 klass;
+    class dento_md_sessionconfig_f948f824 klass;
+    class dento_md_systemoverview_af525e7b concept;
+    class plans_production_readiness_audit_notification_ha_128a0f7c concept;
+    class plans_production_readiness_audit_phi_idor_e2d84bd6 concept;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>PHI IDOR Vulnerability (C1/C2)</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for PHI IDOR Vulnerability (C1/C2).</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Notification Architecture Half-Built</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for Notification Architecture Half-Built.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>Dento-HealthCare System Overview</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Dento-HealthCare System Overview.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>RBAC Roles and Middleware</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>RBAC Roles and Middleware node in dento.md.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>Notification System (NotificationService + Bell + WebSocket)</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>Appointment to Payment Workflow</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>Notification System (NotificationService + Bell + WebSocket) node in dento.md.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>Repository Pattern (Routes → Repos → Models → MongoDB)</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>Appointment to Payment Workflow</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>Repository Pattern (Routes → Repos → Models → MongoDB) node in dento.md.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>Appointment to Payment Workflow</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td><code>Notification System (NotificationServic...</code><br><small style="color:var(--muted)">dento.md</small><br><code>Repository Pattern (Routes → Repos → Mo...</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>No direct outbound edge</td>
+  <td>Appointment to Payment Workflow node in dento.md.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>Session Configuration (express-session + connect-mongo)</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Reads, resolves, or persists project configuration.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>10 Dental Clinics (Specializations)</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-cmd">Entry</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>10 Dental Clinics (Specializations) node in dento.md.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>dento.md</code></td><td>7 nodes</td></tr>
+<tr><td><code>.cursor/plans/production_readiness_audit_94cff507.plan.md</code></td><td>2 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: contains x5, describes problem in x2, uses x2. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 5. AI Diagnosis & GridFS ====== -->
+<h2 id="ai-diagnosis-gridfs">5. AI Diagnosis &amp; GridFS</h2>
+<p>AI Diagnosis &amp; GridFS groups implementation around diagnosis, dentomd, prompt, interpolation, mostly in dento.md, .cursor/plans/production_readiness_audit_94cff507.plan.md, attached_assets/image_1769004128366.png. This section covers 5 nodes and 6 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: AI Diagnosis &amp; GridFS (5 nodes, 6 edges)
+    subgraph ai_diagnosis_gridfs_dento_md_9c337f53["dento.md"]
+        dento_md_aidiagnosisworkflow_edc86937("AI Diagnosis Workflow<br/><small>dento.md</small>")
+        dento_md_aisubsystem_4f42386a("AI Subsystem (Gemini 2.5 Flash Diagnosi...<br/><small>dento.md</small>")
+        dento_md_gridfsstorage_d44aba5c("GridFS X-Ray Storage<br/><small>dento.md</small>")
+    end
+    plans_production_readiness_audit_ai_prompt_bug_ea29de12("AI Diagnosis Prompt Interpolation Bug (C4)<br/><small>.cursor/plans/production_readiness_audit_94cff507.plan.md</small>")
+    attached_assets_image_diagnosis_result_9718b00f("AI Diagnosis Result UI Screenshot (Arab...<br/><small>attached_assets/image_1769004128366.png</small>")
+    dento_md_aisubsystem_4f42386a -->|uses| dento_md_gridfsstorage_d44aba5c
+    dento_md_aidiagnosisworkflow_edc86937 -->|uses| dento_md_gridfsstorage_d44aba5c
+    class dento_md_aidiagnosisworkflow_edc86937 klass;
+    class dento_md_aisubsystem_4f42386a klass;
+    class dento_md_gridfsstorage_d44aba5c klass;
+    class plans_production_readiness_audit_ai_prompt_bug_ea29de12 concept;
+    class attached_assets_image_diagnosis_result_9718b00f klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>AI Diagnosis Prompt Interpolation Bug (C4)</code><br><small style="color:var(--muted)">.cursor/plans/production_readiness_audit_94cff507.plan.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Design note for AI Diagnosis Prompt Interpolation Bug (C4).</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>AI Subsystem (Gemini 2.5 Flash Diagnosis + Chat + TTS)</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>GridFS X-Ray Storage</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>AI Diagnosis Workflow</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td><code>GridFS X-Ray Storage</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>AI Diagnosis Workflow node in dento.md.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>GridFS X-Ray Storage</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td><code>AI Diagnosis Workflow</code><br><small style="color:var(--muted)">dento.md</small><br><code>AI Subsystem (Gemini 2.5 Flash Diagnosi...</code><br><small style="color:var(--muted)">dento.md</small></td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>AI Diagnosis Result UI Screenshot (Arabic — Local Analysis Fallback)</code><br><small style="color:var(--muted)">attached_assets/image_1769004128366.png</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Orchestrates analysis and returns structured documentation data.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>dento.md</code></td><td>3 nodes</td></tr>
+<tr><td><code>.cursor/plans/production_readiness_audit_94cff507.plan.md</code></td><td>1 nodes</td></tr>
+<tr><td><code>attached_assets/image_1769004128366.png</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: uses x2, describes problem in x1, illustrates x1, implements x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 6. Delta University Branding ====== -->
+<h2 id="delta-university-branding">6. Delta University Branding</h2>
+<p>Delta University Branding groups implementation around delta, university, attached, assets, mostly in attached_assets/Capture_1761925562964.PNG, attached_assets/WhatsApp Image 2025-10-31 at 4.51.31 PM_1761925499884.jpeg. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Delta University Branding (2 nodes, 1 edges)
+    attached_assets_capture_delta_university_logo_5da08e25("Delta University for Science and Techno...<br/><small>attached_assets/Capture_1761925562964.PNG</small>")
+    attached_assets_whatsapp_dental_faculty_seal_e6e42e53("Faculty of Oral and Dental Medicine Sea...<br/><small>attached_assets/WhatsApp Image 2025-10-31 at 4.51.31 PM_1761925499884.jpeg</small>")
+    attached_assets_capture_delta_university_logo_5da08e25 -->|semantically similar to| attached_assets_whatsapp_dental_faculty_seal_e6e42e53
+    class attached_assets_capture_delta_university_logo_5da08e25 klass;
+    class attached_assets_whatsapp_dental_faculty_seal_e6e42e53 klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>Delta University for Science and Technology Logo</code><br><small style="color:var(--muted)">attached_assets/Capture_1761925562964.PNG</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Delta University for Science and Technology Logo node in attached_assets/Capture_1761925562964.PNG.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Faculty of Oral and Dental Medicine Seal (Delta University)</code><br><small style="color:var(--muted)">attached_assets/WhatsApp Image 2025-10-31 at 4.51.31 PM_1761925499884.jpeg</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Faculty of Oral and Dental Medicine Seal (Delta University) node in attached_assets/WhatsApp Image 2025-10-31 at 4.51.31 PM_1761925499884.jpeg.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>attached_assets/Capture_1761925562964.PNG</code></td><td>1 nodes</td></tr>
+<tr><td><code>attached_assets/WhatsApp Image 2025-10-31 at 4.51.31 PM_1761925499884.jpeg</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: semantically similar to x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 7. DULMS Portal Integration ====== -->
+<h2 id="dulms-portal-integration">7. DULMS Portal Integration</h2>
+<p>DULMS Portal Integration groups implementation around dulms, screenshot, attached, assets, mostly in attached_assets/dulm_1761921854353.PNG, attached_assets/login_1761921965509.PNG. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: DULMS Portal Integration (2 nodes, 1 edges)
+    attached_assets_dulm_screenshot_4ee91b2c("DULMS Student Portal Screenshot (Delta...<br/><small>attached_assets/dulm_1761921854353.PNG</small>")
+    attached_assets_login_dulms_531feda1("DULMS Login Page Screenshot<br/><small>attached_assets/login_1761921965509.PNG</small>")
+    attached_assets_dulm_screenshot_4ee91b2c -->|semantically similar to| attached_assets_login_dulms_531feda1
+    class attached_assets_dulm_screenshot_4ee91b2c klass;
+    class attached_assets_login_dulms_531feda1 klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>DULMS Student Portal Screenshot (Delta University LMS)</code><br><small style="color:var(--muted)">attached_assets/dulm_1761921854353.PNG</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>DULMS Student Portal Screenshot (Delta University LMS) node in attached_assets/dulm_1761921854353.PNG.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>DULMS Login Page Screenshot</code><br><small style="color:var(--muted)">attached_assets/login_1761921965509.PNG</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>attached_assets/dulm_1761921854353.PNG</code></td><td>1 nodes</td></tr>
+<tr><td><code>attached_assets/login_1761921965509.PNG</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: semantically similar to x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 8. App Branding & Favicon ====== -->
+<h2 id="app-branding-favicon">8. App Branding &amp; Favicon</h2>
+<p>App Branding &amp; Favicon groups implementation around tooth, gemini, generated, neural, mostly in Gemini_Generated_Image_5l4yb5l4yb5l4yb5.png, client/public/favicon.png. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: App Branding &amp; Favicon (2 nodes, 1 edges)
+    gemini_image_ai_tooth_logo_398d4e36("AI Tooth Logo (Gemini Generated — Neura...<br/><small>Gemini_Generated_Image_5l4yb5l4yb5l4yb5.png</small>")
+    client_public_favicon_0aaa6b26("Dento-HealthCare Favicon (AI Neural Too...<br/><small>client/public/favicon.png</small>")
+    gemini_image_ai_tooth_logo_398d4e36 -->|semantically similar to| client_public_favicon_0aaa6b26
+    class gemini_image_ai_tooth_logo_398d4e36 klass;
+    class client_public_favicon_0aaa6b26 klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>AI Tooth Logo (Gemini Generated — Neural Network Tooth Icon)</code><br><small style="color:var(--muted)">Gemini_Generated_Image_5l4yb5l4yb5l4yb5.png</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>AI Tooth Logo (Gemini Generated — Neural Network Tooth Icon) node in Gemini_Generated_Image_5l4yb5l4yb5l4yb5.png.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Dento-HealthCare Favicon (AI Neural Tooth Icon)</code><br><small style="color:var(--muted)">client/public/favicon.png</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Dento-HealthCare Favicon (AI Neural Tooth Icon) node in client/public/favicon.png.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>Gemini_Generated_Image_5l4yb5l4yb5l4yb5.png</code></td><td>1 nodes</td></tr>
+<tr><td><code>client/public/favicon.png</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: semantically similar to x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 9. Graphify Tooling ====== -->
+<h2 id="graphify-tooling">9. Graphify Tooling</h2>
+<p>Graphify Tooling groups implementation around graphify, agents, graphifymd, always, mostly in .agents/rules/graphify.md, .agents/workflows/graphify.md. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Graphify Tooling (2 nodes, 1 edges)
+    rules_graphify_graphifyrule_ee2dc5fd("Graphify Always-On Rule<br/><small>.agents/rules/graphify.md</small>")
+    workflows_graphify_graphifyworkflow_76d9c249("Graphify Workflow<br/><small>.agents/workflows/graphify.md</small>")
+    rules_graphify_graphifyrule_ee2dc5fd -->|references| workflows_graphify_graphifyworkflow_76d9c249
+    class rules_graphify_graphifyrule_ee2dc5fd concept;
+    class workflows_graphify_graphifyworkflow_76d9c249 concept;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>Graphify Always-On Rule</code><br><small style="color:var(--muted)">.agents/rules/graphify.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Graphify Always-On Rule.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>Graphify Workflow</code><br><small style="color:var(--muted)">.agents/workflows/graphify.md</small></td>
+  <td><span class="tag tag-func">Concept</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Documentation node describing Graphify Workflow.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>.agents/rules/graphify.md</code></td><td>1 nodes</td></tr>
+<tr><td><code>.agents/workflows/graphify.md</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: references x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 10. Storage & Data Layer ====== -->
+<h2 id="storage-data-layer">10. Storage &amp; Data Layer</h2>
+<p>Storage &amp; Data Layer groups implementation around server, storagets, istorage, mongostorage, mostly in server/storage.ts. This section covers 2 nodes and 1 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Storage &amp; Data Layer (2 nodes, 1 edges)
+    server_storage_istorage_c5f73f25("IStorage<br/><small>server/storage.ts</small>")
+    server_storage_mongostorage_f800dde0("MongoStorage<br/><small>server/storage.ts</small>")
+    server_storage_istorage_c5f73f25 -->|implements| server_storage_mongostorage_f800dde0
+    class server_storage_istorage_c5f73f25 klass;
+    class server_storage_mongostorage_f800dde0 klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>IStorage</code><br><small style="color:var(--muted)">server/storage.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>MongoStorage</code><br><small style="color:var(--muted)">server/storage.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Supports retrieval-augmented Q&amp;A or streaming chat.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>server/storage.ts</code></td><td>2 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: implements x1. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 11. Theme & Language Toggle ====== -->
+<h2 id="theme-language-toggle">11. Theme &amp; Language Toggle</h2>
+<p>Theme &amp; Language Toggle groups implementation around languagetoggle, client, components, common, mostly in components/common/ThemeLanguageToggle.tsx. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Theme &amp; Language Toggle (1 nodes, 0 edges)
+    common_themelanguagetoggle_languagetoggle_62f88d84("LanguageToggle<br/><small>components/common/ThemeLanguageToggle.tsx</small>")
+    class common_themelanguagetoggle_languagetoggle_62f88d84 ui;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>LanguageToggle</code><br><small style="color:var(--muted)">components/common/ThemeLanguageToggle.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>LanguageToggle node in components/common/ThemeLanguageToggle.tsx.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>components/common/ThemeLanguageToggle.tsx</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 12. Theme Toggle ====== -->
+<h2 id="theme-toggle">12. Theme Toggle</h2>
+<p>Theme Toggle groups implementation around themetoggle, client, components, common, mostly in components/common/ThemeLanguageToggle.tsx. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Theme Toggle (1 nodes, 0 edges)
+    common_themelanguagetoggle_themetoggle_cc7084d2("ThemeToggle<br/><small>components/common/ThemeLanguageToggle.tsx</small>")
+    class common_themelanguagetoggle_themetoggle_cc7084d2 ui;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>ThemeToggle</code><br><small style="color:var(--muted)">components/common/ThemeLanguageToggle.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ThemeToggle node in components/common/ThemeLanguageToggle.tsx.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>components/common/ThemeLanguageToggle.tsx</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 13. Error Boundary ====== -->
+<h2 id="error-boundary">13. Error Boundary</h2>
+<p>Error Boundary groups implementation around errorboundary, client, components, errorboundarytsx, mostly in src/components/ErrorBoundary.tsx. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Error Boundary (1 nodes, 0 edges)
+    components_errorboundary_errorboundary_bc43d0be("ErrorBoundary<br/><small>src/components/ErrorBoundary.tsx</small>")
+    class components_errorboundary_errorboundary_bc43d0be ui;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>ErrorBoundary</code><br><small style="color:var(--muted)">src/components/ErrorBoundary.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ErrorBoundary node in src/components/ErrorBoundary.tsx.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>src/components/ErrorBoundary.tsx</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 14. Medical Staff Dashboard ====== -->
+<h2 id="medical-staff-dashboard">14. Medical Staff Dashboard</h2>
+<p>Medical Staff Dashboard groups implementation around medicalstaffdashboard, client, components, medicalstaffdashboardtsx, mostly in src/components/MedicalStaffDashboard.tsx. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Medical Staff Dashboard (1 nodes, 0 edges)
+    components_medicalstaffdashboard_medicalstaffdas_96477763("MedicalStaffDashboard<br/><small>src/components/MedicalStaffDashboard.tsx</small>")
+    class components_medicalstaffdashboard_medicalstaffdas_96477763 ui;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>MedicalStaffDashboard</code><br><small style="color:var(--muted)">src/components/MedicalStaffDashboard.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>MedicalStaffDashboard node in src/components/MedicalStaffDashboard.tsx.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>src/components/MedicalStaffDashboard.tsx</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 15. Admin Route Guard ====== -->
+<h2 id="admin-route-guard">15. Admin Route Guard</h2>
+<p>Admin Route Guard groups implementation around adminroute, client, components, protectedroutetsx, mostly in src/components/ProtectedRoute.tsx. This section covers 1 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Admin Route Guard (1 nodes, 0 edges)
+    components_protectedroute_adminroute_b1e41a69("AdminRoute<br/><small>src/components/ProtectedRoute.tsx</small>")
+    class components_protectedroute_adminroute_b1e41a69 api;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>AdminRoute</code><br><small style="color:var(--muted)">src/components/ProtectedRoute.tsx</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>AdminRoute node in src/components/ProtectedRoute.tsx.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>src/components/ProtectedRoute.tsx</code></td><td>1 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<!-- ====== 16. Other ====== -->
+<h2 id="other">16. Other</h2>
+<p>Other groups implementation around server, client, models, utils, mostly in server/middleware/auth.ts, src/contexts/AuthContext.tsx, server/utils/errorHandler.ts. This section covers 77 nodes and 0 internal edges; the diagram shows only representative relationships to stay readable.</p>
+
+<div class="mermaid">
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "15.0px", "fontFamily": "Segoe UI, system-ui, sans-serif", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0", "primaryBorderColor": "#38bdf8", "secondaryColor": "#0f172a", "tertiaryColor": "#334155", "lineColor": "#64748b", "textColor": "#e2e8f0"}, "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 48, "rankSpacing": 64, "padding": 14, "diagramPadding": 10, "useMaxWidth": true}}}%%
+flowchart LR
+    %% Section: Other (77 nodes, 0 edges)
+    subgraph other_server_middleware_auth_ts_e5ddcf89["server/middleware/auth.ts"]
+        middleware_auth_usertype_1f05eacf("UserType<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_canaccesspatient_2a49056a("canAccessPatient<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_getdoctoridfromuserid_898f4f0e("getDoctorIdFromUserId<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_getpatientidfromuserid_383ef845("getPatientIdFromUserId<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_requireauth_2ac16b81("requireAuth<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_requirerole_0f291f42("requireRole<br/><small>server/middleware/auth.ts</small>")
+        middleware_auth_validatepatientaccess_7e51d5ca("validatePatientAccess<br/><small>server/middleware/auth.ts</small>")
+    end
+    subgraph other_components_ui_loading_skeleton_tsx_b59f6832["components/ui/loading-skeleton.tsx"]
+        ui_loading_skeleton_cardskeleton_88de4a01("CardSkeleton<br/><small>components/ui/loading-skeleton.tsx</small>")
+        ui_loading_skeleton_statsskeleton_c3b09256("StatsSkeleton<br/><small>components/ui/loading-skeleton.tsx</small>")
+    end
+    subgraph other_server_middleware_validation_ts_810a5156["server/middleware/validation.ts"]
+        middleware_validation_validatebody_ec072a78("validateBody<br/><small>server/middleware/validation.ts</small>")
+        middleware_validation_validateparams_9f3a2178("validateParams<br/><small>server/middleware/validation.ts</small>")
+    end
+    utils_retry_retryconfig_9068f2e1("RetryConfig<br/><small>api/utils/retry.ts</small>")
+    attached_assets_stock_dental_exam_49a90837("Modern Dental Examination Stock Photo<br/><small>attached_assets/stock_images/modern_dental_hospit_e3518571.jpg</small>")
+    ui_badge_badgeprops_4b8ff718("BadgeProps<br/><small>components/ui/badge.tsx</small>")
+    ui_button_buttonprops_4e1c8c49("ButtonProps<br/><small>components/ui/button.tsx</small>")
+    ui_calendar_calendarprops_77844f32("CalendarProps<br/><small>components/ui/calendar.tsx</small>")
+    ui_chart_chartconfig_b3043ac5("ChartConfig<br/><small>components/ui/chart.tsx</small>")
+    models_appointment_model_iappointment_8426bfbf("IAppointment<br/><small>server/models/appointment.model.ts</small>")
+    %% Omitted for readability: 59 nodes, 0 edges
+    class middleware_auth_usertype_1f05eacf klass;
+    class middleware_auth_canaccesspatient_2a49056a function;
+    class middleware_auth_getdoctoridfromuserid_898f4f0e function;
+    class middleware_auth_getpatientidfromuserid_383ef845 function;
+    class middleware_auth_requireauth_2ac16b81 function;
+    class middleware_auth_requirerole_0f291f42 function;
+    class middleware_auth_validatepatientaccess_7e51d5ca function;
+    class ui_loading_skeleton_cardskeleton_88de4a01 ui;
+    class ui_loading_skeleton_statsskeleton_c3b09256 ui;
+    class middleware_validation_validatebody_ec072a78 function;
+    class middleware_validation_validateparams_9f3a2178 function;
+    class utils_retry_retryconfig_9068f2e1 klass;
+    class attached_assets_stock_dental_exam_49a90837 klass;
+    class ui_badge_badgeprops_4b8ff718 ui;
+    class ui_button_buttonprops_4e1c8c49 ui;
+    class ui_calendar_calendarprops_77844f32 ui;
+    class ui_chart_chartconfig_b3043ac5 ui;
+    class models_appointment_model_iappointment_8426bfbf klass;
+    classDef entry fill:#422006,stroke:#fbbf24,color:#fde68a,stroke-width:1px;
+    classDef api fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-width:1px;
+    classDef async fill:#2e1065,stroke:#a78bfa,color:#ede9fe,stroke-width:1px;
+    classDef klass fill:#064e3b,stroke:#34d399,color:#d1fae5,stroke-width:1px;
+    classDef ui fill:#831843,stroke:#f472b6,color:#fce7f3,stroke-width:1px;
+    classDef module fill:#172554,stroke:#60a5fa,color:#dbeafe,stroke-width:1px;
+    classDef test fill:#3f3f46,stroke:#a1a1aa,color:#f4f4f5,stroke-width:1px;
+    classDef concept fill:#292524,stroke:#a8a29e,color:#fafaf9,stroke-dasharray:4 3;
+    classDef function fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:1px;
+</div>
+
+<h3>Call Details</h3>
+<table class="call-table">
+<tr>
+  <th style="width:5%">#</th>
+  <th style="width:28%">Node</th>
+  <th style="width:10%">Type</th>
+  <th style="width:17%">Caller</th>
+  <th style="width:20%">Callees</th>
+  <th style="width:20%">Description</th>
+</tr>
+<tr>
+  <td>1</td>
+  <td><code>ProtectedRoute</code><br><small style="color:var(--muted)">src/components/ProtectedRoute.tsx</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ProtectedRoute node in src/components/ProtectedRoute.tsx.</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td><code>ReportsList</code><br><small style="color:var(--muted)">src/components/ReportsList.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>ReportsList node in src/components/ReportsList.tsx.</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td><code>TodayAppointmentsPage</code><br><small style="color:var(--muted)">src/components/TodayAppointmentsPage.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>Organizes documentation pages, navigation, or content lookup.</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td><code>TreatmentPlanCard</code><br><small style="color:var(--muted)">src/components/TreatmentPlanCard.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>TreatmentPlanCard node in src/components/TreatmentPlanCard.tsx.</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td><code>AuthProvider</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>AuthProvider node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td><code>useAuth</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useAuth node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td><code>useIsAdmin</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useIsAdmin node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td><code>useIsDoctor</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useIsDoctor node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td><code>useIsMedicalStaff</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useIsMedicalStaff node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td><code>useIsPatient</code><br><small style="color:var(--muted)">src/contexts/AuthContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useIsPatient node in src/contexts/AuthContext.tsx.</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td><code>LanguageProvider</code><br><small style="color:var(--muted)">src/contexts/LanguageContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>LanguageProvider node in src/contexts/LanguageContext.tsx.</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td><code>useLanguage</code><br><small style="color:var(--muted)">src/contexts/LanguageContext.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useLanguage node in src/contexts/LanguageContext.tsx.</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td><code>useAuth</code><br><small style="color:var(--muted)">src/hooks/use-auth.ts</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useAuth node in src/hooks/use-auth.ts.</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td><code>useIsMobile</code><br><small style="color:var(--muted)">src/hooks/use-mobile.tsx</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useIsMobile node in src/hooks/use-mobile.tsx.</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td><code>useWebSocket</code><br><small style="color:var(--muted)">src/hooks/useWebSocket.ts</small></td>
+  <td><span class="tag tag-hook">UI</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>useWebSocket node in src/hooks/useWebSocket.ts.</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td><code>isUnauthorizedError</code><br><small style="color:var(--muted)">src/lib/auth-utils.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>isUnauthorizedError node in src/lib/auth-utils.ts.</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td><code>redirectToLogin</code><br><small style="color:var(--muted)">src/lib/auth-utils.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>redirectToLogin node in src/lib/auth-utils.ts.</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td><code>apiRequest</code><br><small style="color:var(--muted)">src/lib/queryClient.ts</small></td>
+  <td><span class="tag tag-endpoint">API</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>apiRequest node in src/lib/queryClient.ts.</td>
+</tr>
+<tr>
+  <td>19</td>
+  <td><code>cn</code><br><small style="color:var(--muted)">src/lib/utils.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>cn node in src/lib/utils.ts.</td>
+</tr>
+<tr>
+  <td>20</td>
+  <td><code>canAccessPatient</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>canAccessPatient node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>21</td>
+  <td><code>getDoctorIdFromUserId</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>getDoctorIdFromUserId node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>22</td>
+  <td><code>getPatientIdFromUserId</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>getPatientIdFromUserId node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>23</td>
+  <td><code>requireAuth</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requireAuth node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>24</td>
+  <td><code>requireRole</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>requireRole node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>25</td>
+  <td><code>UserType</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>UserType node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>26</td>
+  <td><code>validatePatientAccess</code><br><small style="color:var(--muted)">server/middleware/auth.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>validatePatientAccess node in server/middleware/auth.ts.</td>
+</tr>
+<tr>
+  <td>27</td>
+  <td><code>validateBody</code><br><small style="color:var(--muted)">server/middleware/validation.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>validateBody node in server/middleware/validation.ts.</td>
+</tr>
+<tr>
+  <td>28</td>
+  <td><code>validateParams</code><br><small style="color:var(--muted)">server/middleware/validation.ts</small></td>
+  <td><span class="tag tag-func">Function</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>validateParams node in server/middleware/validation.ts.</td>
+</tr>
+<tr>
+  <td>29</td>
+  <td><code>IAppointment</code><br><small style="color:var(--muted)">server/models/appointment.model.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>IAppointment node in server/models/appointment.model.ts.</td>
+</tr>
+<tr>
+  <td>30</td>
+  <td><code>IAuditLog</code><br><small style="color:var(--muted)">server/models/audit-log.model.ts</small></td>
+  <td><span class="tag tag-class">Class</span></td>
+  <td>External entry / no inbound edge</td>
+  <td>No direct outbound edge</td>
+  <td>IAuditLog node in server/models/audit-log.model.ts.</td>
+</tr>
+</table>
+
+<div class="grid">
+  <div class="card">
+    <h4>Key Files</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><th>File</th><th>Coverage</th></tr>
+      <tr><td><code>server/middleware/auth.ts</code></td><td>7 nodes</td></tr>
+<tr><td><code>src/contexts/AuthContext.tsx</code></td><td>6 nodes</td></tr>
+<tr><td><code>server/utils/errorHandler.ts</code></td><td>5 nodes</td></tr>
+<tr><td><code>server/utils/gridfsStorage.ts</code></td><td>5 nodes</td></tr>
+<tr><td><code>server/vite.ts</code></td><td>3 nodes</td></tr>
+<tr><td><code>components/ui/loading-skeleton.tsx</code></td><td>2 nodes</td></tr>
+<tr><td><code>src/contexts/LanguageContext.tsx</code></td><td>2 nodes</td></tr>
+<tr><td><code>src/lib/auth-utils.ts</code></td><td>2 nodes</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Design Notes</h4>
+    <p>This section comes from graphify community clustering. Relationship summary: No high-confidence call edges detected. The diagram prioritizes high-confidence calls or usage relationships; the table keeps the broader node inventory.</p>
+  </div>
+</div>
+<hr>
+
+<h2 id="hyperedges">Group Relationships (Hyperedges)</h2>
+<div class="grid">
+
+  <div class="card">
+    <h4>Auth Failure Triangle: Session Config + Axios Missing Credentials + PHI IDOR</h4>
+    <p><code>co_participate_in_auth_failure</code> — 3 participants</p>
+    <ul>
+      <li><code>dento_md_sessionconfig</code></li>
+      <li><code>plans_production_readiness_audit_axios_auth_bug</code></li>
+      <li><code>plans_production_readiness_audit_phi_idor</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>AI Diagnosis Broken Chain: AI Subsystem + Prompt Bug + GridFS Not Wired</h4>
+    <p><code>co_participate_in_broken_feature</code> — 3 participants</p>
+    <ul>
+      <li><code>dento_md_aisubsystem</code></li>
+      <li><code>plans_production_readiness_audit_ai_prompt_bug</code></li>
+      <li><code>dento_md_gridfsstorage</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Delta University Branding Assets: Logo + Faculty Seal + DULMS Portal</h4>
+    <p><code>co_represent_institution</code> — 3 participants</p>
+    <ul>
+      <li><code>attached_assets_capture_delta_university_logo</code></li>
+      <li><code>attached_assets_whatsapp_dental_faculty_seal</code></li>
+      <li><code>attached_assets_dulm_screenshot</code></li>
+    </ul>
+  </div>
+</div>
+<hr>
+<h2 id="stats">Project Statistics</h2>
+
+<div class="grid">
+  <div class="card">
+    <h4>Graph</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>Nodes</td><td>127</td></tr>
+      <tr><td>Edges</td><td>46</td></tr>
+      <tr><td>Hyperedges</td><td>3</td></tr>
+      <tr><td>Communities</td><td>98</td></tr>
+      <tr><td>Documented Sections</td><td>15</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h4>Edge Confidence</h4>
+    <table style="width:100%;font-size:0.85rem;">
+      <tr><td>EXTRACTED</td><td>30</td></tr>
+      <tr><td>INFERRED</td><td>16</td></tr>
+      <tr><td>AMBIGUOUS</td><td>0</td></tr>
+    </table>
+  </div>
+</div>
+
+<div style="text-align:center; padding:40px 0; color: var(--muted); font-size:0.9rem;">
+  <p>Dento-HealthCare — Architecture Documentation</p>
+  <p>Generated: 2026-06-11 23:22 UTC · graphify callflow-html</p>
+</div>
+
+</div><!-- .container -->
+
+<script>
+(function () {
+  const mermaidConfig = {
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, useMaxWidth: true },
+    themeVariables: {
+      primaryColor: '#1e293b',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#38bdf8',
+      secondaryColor: '#0f172a',
+      tertiaryColor: '#334155',
+      lineColor: '#64748b',
+      textColor: '#e2e8f0',
+    }
+  };
+
+  mermaid.initialize(mermaidConfig);
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function enhanceMermaidDiagrams() {
+    document.querySelectorAll('.mermaid').forEach((container) => {
+      if (container.dataset.zoomReady === 'true') return;
+      const svg = container.querySelector('svg');
+      if (!svg) return;
+
+      container.dataset.zoomReady = 'true';
+      container.classList.add('is-enhanced');
+
+      const viewport = document.createElement('div');
+      viewport.className = 'mermaid-viewport';
+      svg.parentNode.insertBefore(viewport, svg);
+      viewport.appendChild(svg);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'mermaid-toolbar';
+      toolbar.innerHTML = [
+        '<button type="button" data-action="zoom-out" title="Zoom out">-</button>',
+        '<span class="zoom-level" data-role="level">100%</span>',
+        '<button type="button" data-action="zoom-in" title="Zoom in">+</button>',
+        '<button type="button" data-action="fit" title="Fit width">Fit</button>',
+        '<button type="button" data-action="reset" title="Reset view">Reset</button>'
+      ].join('');
+      container.insertBefore(toolbar, viewport);
+
+      const state = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, originX: 0, originY: 0 };
+      const level = toolbar.querySelector('[data-role="level"]');
+
+      function applyTransform() {
+        svg.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+        level.textContent = `${Math.round(state.scale * 100)}%`;
+      }
+
+      function zoomBy(delta) {
+        state.scale = clamp(state.scale + delta, 0.25, 3);
+        applyTransform();
+      }
+
+      function reset() {
+        state.scale = 1;
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      function fitWidth() {
+        const rawWidth = svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width
+          ? svg.viewBox.baseVal.width
+          : svg.getBoundingClientRect().width / state.scale;
+        if (!rawWidth) {
+          reset();
+          return;
+        }
+        state.scale = clamp((viewport.clientWidth - 48) / rawWidth, 0.25, 1.4);
+        state.x = 0;
+        state.y = 0;
+        applyTransform();
+      }
+
+      toolbar.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+        if (action === 'zoom-in') zoomBy(0.15);
+        if (action === 'zoom-out') zoomBy(-0.15);
+        if (action === 'fit') fitWidth();
+        if (action === 'reset') reset();
+      });
+
+      viewport.addEventListener('wheel', (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+      }, { passive: false });
+
+      viewport.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        state.dragging = true;
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        state.originX = state.x;
+        state.originY = state.y;
+        viewport.classList.add('is-dragging');
+        viewport.setPointerCapture(event.pointerId);
+      });
+
+      viewport.addEventListener('pointermove', (event) => {
+        if (!state.dragging) return;
+        state.x = state.originX + event.clientX - state.startX;
+        state.y = state.originY + event.clientY - state.startY;
+        applyTransform();
+      });
+
+      function endDrag(event) {
+        if (!state.dragging) return;
+        state.dragging = false;
+        viewport.classList.remove('is-dragging');
+        if (viewport.hasPointerCapture(event.pointerId)) {
+          viewport.releasePointerCapture(event.pointerId);
+        }
+      }
+
+      viewport.addEventListener('pointerup', endDrag);
+      viewport.addEventListener('pointercancel', endDrag);
+      applyTransform();
+    });
+  }
+
+  function renderMermaid() {
+    const result = mermaid.run
+      ? mermaid.run({ querySelector: '.mermaid' })
+      : Promise.resolve();
+    Promise.resolve(result)
+      .then(enhanceMermaidDiagrams)
+      .catch((error) => {
+        console.error('Mermaid render failed:', error);
+        enhanceMermaidDiagrams();
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderMermaid);
+  } else {
+    renderMermaid();
+  }
+})();
+</script>
+
+</body>
+</html>

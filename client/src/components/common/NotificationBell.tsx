@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useCallback } from "react";
 import { Bell } from "lucide-react";
 import {
     DropdownMenu,
@@ -9,13 +9,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 interface Notification {
     id: string;
     title: string;
     message: string;
-    time: string;
-    type: "appointment" | "message" | "payment" | "general";
+    titleEn?: string;
+    messageEn?: string;
+    createdAt: string;
+    type: "appointment" | "message" | "payment" | "general" | "system";
     read: boolean;
 }
 
@@ -24,72 +28,109 @@ interface NotificationBellProps {
     onNotificationClick?: (type: string) => void;
 }
 
+async function fetchNotifications(): Promise<Notification[]> {
+    const res = await fetch("/api/v1/notifications", { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch notifications");
+    return res.json();
+}
+
+async function markAsReadApi(id: string): Promise<void> {
+    await fetch(`/api/v1/notifications/${id}/read`, {
+        method: "PATCH",
+        credentials: "include",
+    });
+}
+
+async function markAllAsReadApi(): Promise<void> {
+    await fetch("/api/v1/notifications/read-all", {
+        method: "PATCH",
+        credentials: "include",
+    });
+}
+
+async function deleteNotificationApi(id: string): Promise<void> {
+    await fetch(`/api/v1/notifications/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+    });
+}
+
+function formatTime(dateStr: string, language: "ar" | "en"): string {
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (language === "ar") {
+        if (diff < 60) return "الآن";
+        if (diff < 3600) return `منذ ${Math.floor(diff / 60)} دقيقة`;
+        if (diff < 86400) return `منذ ${Math.floor(diff / 3600)} ساعة`;
+        return `منذ ${Math.floor(diff / 86400)} يوم`;
+    } else {
+        if (diff < 60) return "Just now";
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return `${Math.floor(diff / 86400)}d ago`;
+    }
+}
+
+const TYPE_ICONS: Record<string, string> = {
+    appointment: "📅",
+    message: "💬",
+    payment: "💳",
+    system: "🔔",
+    general: "🔔",
+};
+
+const NAVIGATION_MAP: Record<string, string> = {
+    appointment: "appointments",
+    message: "chat",
+    payment: "payment",
+    system: "treatment-plan-detail",
+    general: "home",
+};
+
 export function NotificationBell({ language = "ar", onNotificationClick }: NotificationBellProps) {
-    const [notifications, setNotifications] = useState<Notification[]>([
-        {
-            id: "1",
-            title: language === "ar" ? "رسالة جديدة" : "New Message",
-            message: language === "ar" ? "لديك رسالة من د. محمد" : "Message from Dr. Mohamed",
-            time: language === "ar" ? "منذ 5 دقائق" : "5 mins ago",
-            type: "message",
-            read: false,
-        },
-        {
-            id: "2",
-            title: language === "ar" ? "موعد قادم" : "Upcoming Appointment",
-            message: language === "ar" ? "موعدك غداً الساعة 10:00 صباحاً" : "Your appointment tomorrow at 10:00 AM",
-            time: language === "ar" ? "منذ ساعة" : "1 hour ago",
-            type: "appointment",
-            read: false,
-        },
-        {
-            id: "3",
-            title: language === "ar" ? "تذكير دفع" : "Payment Reminder",
-            message: language === "ar" ? "لديك مبلغ مستحق 500 ج.م" : "You have EGP 500 due",
-            time: language === "ar" ? "منذ 3 ساعات" : "3 hours ago",
-            type: "payment",
-            read: true,
-        },
-    ]);
+    const queryClient = useQueryClient();
+    const { subscribe } = useWebSocket();
+
+    const { data: notifications = [] } = useQuery<Notification[]>({
+        queryKey: ["notifications"],
+        queryFn: fetchNotifications,
+        refetchInterval: 30_000, // Poll every 30 seconds
+        staleTime: 10_000,
+    });
+
+    useEffect(() => {
+        return subscribe<Notification>("notification", (notification) => {
+            queryClient.setQueryData<Notification[]>(["notifications"], (current = []) => {
+                if (current.some((item) => item.id === notification.id)) {
+                    return current;
+                }
+                return [notification, ...current];
+            });
+        });
+    }, [queryClient, subscribe]);
+
+    const markReadMutation = useMutation({
+        mutationFn: markAsReadApi,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    });
+
+    const markAllReadMutation = useMutation({
+        mutationFn: markAllAsReadApi,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: deleteNotificationApi,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+    });
+
+    const handleNotificationClick = useCallback((notification: Notification) => {
+        if (!notification.read) {
+            markReadMutation.mutate(notification.id);
+        }
+        onNotificationClick?.(NAVIGATION_MAP[notification.type] || "home");
+    }, [markReadMutation, onNotificationClick]);
 
     const unreadCount = notifications.filter((n) => !n.read).length;
-
-    const markAsRead = (id: string) => {
-        setNotifications((prev) =>
-            prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-        );
-    };
-
-    const markAllAsRead = () => {
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    };
-
-    const getNotificationIcon = (type: string) => {
-        switch (type) {
-            case "appointment":
-                return "📅";
-            case "message":
-                return "💬";
-            case "payment":
-                return "💳";
-            default:
-                return "🔔";
-        }
-    };
-
-    const handleNotificationClick = (notification: Notification) => {
-        markAsRead(notification.id);
-
-        // Navigate based on notification type
-        const navigationMap: Record<string, string> = {
-            appointment: "appointments",
-            message: "chat",
-            payment: "payment",
-            general: "home",
-        };
-
-        onNotificationClick?.(navigationMap[notification.type] || "home");
-    };
 
     return (
         <DropdownMenu dir={language === "ar" ? "rtl" : "ltr"}>
@@ -124,7 +165,7 @@ export function NotificationBell({ language = "ar", onNotificationClick }: Notif
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={markAllAsRead}
+                            onClick={() => markAllReadMutation.mutate()}
                             className="text-xs h-7"
                         >
                             {language === "ar" ? "تحديد الكل كمقروء" : "Mark all as read"}
@@ -143,33 +184,40 @@ export function NotificationBell({ language = "ar", onNotificationClick }: Notif
                     ) : (
                         <div className="divide-y">
                             {notifications.map((notification) => (
-                                <DropdownMenuItem
-                                    key={notification.id}
-                                    className={`p-4 cursor-pointer ${!notification.read ? "bg-primary/5" : ""}`}
-                                    onClick={() => handleNotificationClick(notification)}
-                                >
-                                    <div className="flex gap-3 w-full">
-                                        <div className="flex-shrink-0 text-2xl">
-                                            {getNotificationIcon(notification.type)}
-                                        </div>
-                                        <div className="flex-1 space-y-1">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <p className={`text-sm font-medium ${!notification.read ? "font-semibold" : ""}`}>
-                                                    {notification.title}
-                                                </p>
-                                                {!notification.read && (
-                                                    <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1" />
-                                                )}
+                                (() => {
+                                    const title = language === "en" && notification.titleEn ? notification.titleEn : notification.title;
+                                    const message = language === "en" && notification.messageEn ? notification.messageEn : notification.message;
+
+                                    return (
+                                        <DropdownMenuItem
+                                            key={notification.id}
+                                            className={`p-4 cursor-pointer ${!notification.read ? "bg-primary/5" : ""}`}
+                                            onClick={() => handleNotificationClick(notification)}
+                                        >
+                                            <div className="flex gap-3 w-full">
+                                                <div className="flex-shrink-0 text-2xl">
+                                                    {TYPE_ICONS[notification.type] || "🔔"}
+                                                </div>
+                                                <div className="flex-1 space-y-1">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <p className={`text-sm ${!notification.read ? "font-semibold" : "font-medium"}`}>
+                                                            {title}
+                                                        </p>
+                                                        {!notification.read && (
+                                                            <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1" />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground line-clamp-2">
+                                                        {message}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {formatTime(notification.createdAt, language)}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <p className="text-xs text-muted-foreground line-clamp-2">
-                                                {notification.message}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {notification.time}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </DropdownMenuItem>
+                                        </DropdownMenuItem>
+                                    );
+                                })()
                             ))}
                         </div>
                     )}

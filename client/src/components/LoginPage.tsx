@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UserCircle, GraduationCap, Users, Stethoscope, LogIn, Globe, Moon, Sun, Eye, EyeOff, AlertTriangle, Lock, UserPlus, Mail } from "lucide-react";
 import { motion } from "framer-motion";
-import loginBg from "@assets/stock_images/modern_dental_hospit_e3518571.jpg";
+
+const loginBg = "/attached_assets/stock_images/modern_dental_hospit_e3518571.jpg";
 
 interface LoginPageProps {
   onLogin?: () => Promise<void>; // Just trigger refetch after successful login
@@ -14,11 +15,11 @@ interface LoginPageProps {
 
 export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
   const [userType, setUserType] = useState<string>("patient");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");  // email OR username
   const [password, setPassword] = useState("");
   const [language, setLanguage] = useState<"ar" | "en">("ar");
   const [isDark, setIsDark] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{ identifier?: string; password?: string }>({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -27,11 +28,9 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // SECURITY: Only remember username, not session data
-    // Session validation is handled server-side via httpOnly cookies
-    const savedEmail = localStorage.getItem("dentoRememberedUser");
-    if (savedEmail) {
-      setEmail(savedEmail);
+    const saved = localStorage.getItem("dentoRememberedUser");
+    if (saved) {
+      setIdentifier(saved);
       setRememberMe(true);
     }
   }, []);
@@ -42,20 +41,14 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
     e.preventDefault();
 
     if (isAccountLocked) {
-      setErrors({
-        email: language === "ar"
-          ? "الحساب مقفل لأسباب أمان. يرجى المحاولة بعد 15 دقيقة"
-          : "Account locked for security. Try again later"
-      });
+      setErrors({ identifier: language === "ar" ? "الحساب مقفل لأسباب أمان. يرجى المحاولة بعد 15 دقيقة" : "Account locked for security. Try again later" });
       return;
     }
 
-    const newErrors: { email?: string; password?: string } = {};
+    const newErrors: { identifier?: string; password?: string } = {};
 
-    if (!email.trim()) {
-      newErrors.email = language === "ar" ? "البريد الإلكتروني مطلوب" : "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = language === "ar" ? "بريد إلكتروني غير صالح" : "Invalid email format";
+    if (!identifier.trim()) {
+      newErrors.identifier = language === "ar" ? "البريد الإلكتروني أو اسم المستخدم مطلوب" : "Email or username is required";
     }
 
     if (!password.trim()) {
@@ -74,7 +67,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, userType }),
+        body: JSON.stringify({ identifier, password, userType }),
       });
 
       const data = await response.json();
@@ -82,7 +75,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
       if (!response.ok) {
         setFailedAttempts(prev => prev + 1);
         setErrors({
-          password: data.message || (language === "ar" ? "اسم المستخدم أو كلمة المرور غير صحيحة" : "Invalid username or password")
+          password: data.message || (language === "ar" ? "بيانات الدخول غير صحيحة" : "Invalid credentials")
         });
         return;
       }
@@ -90,8 +83,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
       setFailedAttempts(0);
 
       if (rememberMe) {
-        // SECURITY: Only remember email, not session data
-        localStorage.setItem("dentoRememberedUser", email);
+        localStorage.setItem("dentoRememberedUser", identifier);
       } else {
         localStorage.removeItem("dentoRememberedUser");
       }
@@ -101,9 +93,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
         await onLogin();
       }
     } catch (error) {
-      setErrors({
-        email: language === "ar" ? "حدث خطأ في الاتصال بالخادم" : "Server connection error"
-      });
+      setErrors({ identifier: language === "ar" ? "حدث خطأ في الاتصال بالخادم" : "Server connection error" });
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +112,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
       subtitle: "مستشفى طب الفم والأسنان",
       university: "جامعة الدلتا للعلوم والتكنولوجيا",
       userType: "نوع المستخدم",
-      email: "البريد الإلكتروني",
+      identifier: "البريد الإلكتروني أو اسم المستخدم",
       password: "كلمة المرور",
       login: "تسجيل الدخول",
       forgotPassword: "نسيت كلمة المرور؟",
@@ -137,7 +127,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
       subtitle: "Faculty of Dentistry Hospital",
       university: "Delta University of Science and Technology",
       userType: "User Type",
-      email: "Email Address",
+      identifier: "Email or Username",
       password: "Password",
       login: "Sign In",
       forgotPassword: "Forgot Password?",
@@ -159,8 +149,7 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url(${loginBg})` }}
         />
-        {/* 70% overlay = 30% image visibility */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/75 via-primary/70 to-primary/65" />
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/75 via-primary/65 to-primary/55" />
 
         {/* Centered content container */}
         <div className="relative z-10 flex flex-col items-center justify-center p-12 text-white w-full h-full text-center">
@@ -302,28 +291,28 @@ export default function LoginPage({ onLogin, onSignUpClick }: LoginPageProps) {
                 </div>
               </div>
 
-              {/* Email Input */}
+              {/* Email / Username Input */}
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {t.email}
+                <Label htmlFor="identifier" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {t.identifier}
                 </Label>
                 <div className="relative">
                   <Mail className={`absolute ${language === "ar" ? "right-3" : "left-3"} top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400`} />
                   <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setErrors({}); }}
-                    className={`${language === "ar" ? "pr-10 text-right" : "pl-10"} h-12 rounded-xl border-gray-200 dark:border-gray-700 ${errors.email ? "border-red-500" : ""}`}
+                    id="identifier"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => { setIdentifier(e.target.value); setErrors({}); }}
+                    className={`${language === "ar" ? "pr-10 text-right" : "pl-10"} h-12 rounded-xl border-gray-200 dark:border-gray-700 ${errors.identifier ? "border-red-500" : ""}`}
                     disabled={isLoading || isAccountLocked}
                     data-testid="input-email"
-                    placeholder={language === "ar" ? "example@domain.com" : "example@domain.com"}
+                    placeholder={language === "ar" ? "example@domain.com أو اسم المستخدم" : "email@domain.com or username"}
                   />
                 </div>
-                {errors.email && (
+                {errors.identifier && (
                   <p className="text-sm text-red-500 flex items-center gap-1">
                     <AlertTriangle className="w-4 h-4" />
-                    {errors.email}
+                    {errors.identifier}
                   </p>
                 )}
               </div>

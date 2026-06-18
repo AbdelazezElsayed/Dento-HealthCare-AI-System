@@ -1,16 +1,20 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
+import path from "path";
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import MongoStore from "connect-mongo";
+import { doubleCsrf } from "csrf-csrf";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { connectMongoDB } from "./mongodb";
+import { connectMongoDB } from "./db/connection";
+import { startCronJobs } from "./services/cron.service";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
+const attachedAssetsPath = path.resolve(import.meta.dirname, "..", "attached_assets");
 
 // ============================================
 // SECURITY MIDDLEWARE
@@ -41,6 +45,9 @@ app.use(cors({
     : true,
   credentials: true,
 }));
+
+// Serve bundled local assets used by the React UI, such as login/signup imagery.
+app.use('/attached_assets', express.static(attachedAssetsPath));
 
 // Rate limiting - General API
 const generalLimiter = rateLimit({
@@ -131,6 +138,45 @@ const sessionConfig = session({
 app.use(sessionConfig);
 app.set('session-middleware', sessionConfig); // Store for WebSocket
 
+// ============================================
+// CSRF PROTECTION (H7)
+// Scoped to sensitive endpoints only (Q2 decision):
+//   - POST /api/v1/auth/login + /register
+//   - POST /api/v1/admin/users/:id/reset-password
+//   - PATCH /api/v1/payments/:id/pay
+// The React SPA fetches the token from GET /api/v1/csrf-token on startup
+// and sends it back as the x-csrf-token header on mutating requests.
+// ============================================
+
+const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () => process.env.SESSION_SECRET || 'dev-csrf-secret',
+  // Required by csrf-csrf v3: a stable session identifier for HMAC binding
+  getSessionIdentifier: (req: Request) => (req.session as any)?.id || req.ip || '',
+  cookieName: isProduction ? '__Host-x-csrf-token' : 'x-csrf-token',
+  cookieOptions: {
+    sameSite: isProduction ? 'strict' : 'lax',
+    secure: isProduction,
+  },
+  // csrf-csrf reads 'x-csrf-token' header by default — no extra config needed
+});
+
+// Expose token endpoint (must be before route registration)
+app.get('/api/v1/csrf-token', (req: Request, res: Response) => {
+  res.json({ token: generateCsrfToken(req, res) });
+});
+
+// Apply CSRF protection ONLY to sensitive mutation routes
+const sensitiveRoutes = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/logout',
+  '/api/v1/admin/users',   // covers reset-password
+  '/api/v1/payments',      // covers PATCH /pay
+];
+for (const route of sensitiveRoutes) {
+  app.use(route, doubleCsrfProtection);
+}
+
 
 // ============================================
 // REQUEST LOGGING
@@ -197,6 +243,10 @@ app.use((req, res, next) => {
   (global as any).websocketServer = websocket;
 
   const port = parseInt(process.env.PORT || '5000', 10);
+  
+  // Start Cron Jobs
+  startCronJobs();
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
     log(`Environment: ${process.env.NODE_ENV || 'development'}`);

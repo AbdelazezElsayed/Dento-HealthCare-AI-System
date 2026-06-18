@@ -1,11 +1,14 @@
 import { Card } from "@/components/ui/card";
-import { Clock, AlertCircle, User, Wand2, Sparkles } from "lucide-react";
+import { Clock, AlertCircle, User, Wand2, Sparkles, Mic } from "lucide-react";
 import ChatbotCore from "@/components/ChatbotCore";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
 
 export default function ChatBotPage() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
 
   // Get user's full name or email as fallback
   const userName = user?.fullName || user?.email?.split('@')[0] || "المريض";
@@ -26,24 +29,39 @@ export default function ChatBotPage() {
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10">
-          <div className="flex items-center gap-4 mb-3">
-            <motion.div
-              className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm shadow-lg"
-              animate={{ rotate: [0, 5, -5, 0] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            >
-              <Wand2 className="w-8 h-8" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-4">
+              <motion.div
+                className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm shadow-lg"
+                animate={{ rotate: [0, 5, -5, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <Wand2 className="w-8 h-8" />
+              </motion.div>
+              <h1 className="text-4xl font-bold flex items-center gap-3">
+                <Sparkles className="w-8 h-8 animate-pulse" />
+                Dento - مساعدك الطبي الذكي
+              </h1>
+            </div>
+
+            {/* Voice Mode Button */}
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={() => navigate("/voice-chat")}
+                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 border border-white/40 text-white rounded-2xl px-4 py-2 backdrop-blur-sm shadow-lg transition-all duration-300"
+                variant="ghost"
+              >
+                <Mic className="w-5 h-5" />
+                <span className="font-medium text-sm">وضع الصوت</span>
+              </Button>
             </motion.div>
-            <h1 className="text-4xl font-bold flex items-center gap-3">
-              <Sparkles className="w-8 h-8 animate-pulse" />
-              Dento - مساعدك الطبي الذكي
-            </h1>
           </div>
           <p className="text-blue-100 text-lg">
             متاح 24/7 للإجابة عن جميع أسئلتك بذكاء وسرعة ✨
           </p>
         </div>
       </motion.div>
+
 
       {/* Main Chat Area */}
       <div className="flex-1 overflow-hidden flex flex-col">

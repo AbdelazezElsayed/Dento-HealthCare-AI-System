@@ -56,8 +56,10 @@ export interface IStorage {
   createVisitSession(session: any): Promise<any>;
   updateVisitSession(id: string, data: any): Promise<any>;
   getPayments(): Promise<any[]>;
+  getPayment(id: string): Promise<any | null>;
   getPaymentsByPatient(patientId: string): Promise<any[]>;
   createPayment(payment: any): Promise<any>;
+  updatePayment(id: string, data: Partial<any>): Promise<any>;
   getPatientBalance(patientId: string): Promise<{ totalDue: number; totalPaid: number; balance: number }>;
   getClinicPrices(): Promise<any[]>;
   getClinicPrice(clinicId: string): Promise<any>;
@@ -78,6 +80,8 @@ export interface IStorage {
   markAllNotificationsAsRead(userId: string): Promise<void>;
   deleteNotification(id: string): Promise<void>;
   getUnreadNotificationCount(userId: string): Promise<number>;
+  // Helper
+  getPatientUserId(patientId: string): Promise<string | null>;
 }
 
 export class MongoStorage implements IStorage {
@@ -273,8 +277,19 @@ export class MongoStorage implements IStorage {
     return payments.map(toPlainObject);
   }
 
+  async getPayment(id: string): Promise<any | null> {
+    const payment = await PaymentModel.findById(id);
+    return payment ? toPlainObject(payment) : null;
+  }
+
   async createPayment(insertPayment: any): Promise<any> {
     const payment = await PaymentModel.create(insertPayment);
+    return toPlainObject(payment);
+  }
+
+  async updatePayment(id: string, data: Partial<any>): Promise<any> {
+    const payment = await PaymentModel.findByIdAndUpdate(id, data, { new: true });
+    if (!payment) throw new Error('Payment not found');
     return toPlainObject(payment);
   }
 
@@ -287,12 +302,15 @@ export class MongoStorage implements IStorage {
     // Now price is a Number, so direct sum works
     const totalDue = attendedSessions.reduce((sum, session) => sum + (session.price || 0), 0);
 
-    const patientPayments = await PaymentModel.find({ patientId });
-    // Now amount is a Number
+    // BUGFIX (H2): Only count payments with status 'paid'.
+    // Previously ALL payments were summed regardless of status, so pending/cancelled
+    // payments were incorrectly counted as paid, producing wrong balances.
+    const patientPayments = await PaymentModel.find({ patientId, status: "paid" });
     const totalPaid = patientPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
 
     return { totalDue, totalPaid, balance: totalDue - totalPaid };
   }
+
 
   async getClinicPrices(): Promise<any[]> {
     const prices = await ClinicPriceModel.find();
@@ -404,6 +422,15 @@ export class MongoStorage implements IStorage {
 
   async getUnreadNotificationCount(userId: string): Promise<number> {
     return await NotificationModel.countDocuments({ userId, read: false });
+  }
+
+  // Returns the userId linked to a patient record (for notification targeting)
+  async getPatientUserId(patientId: string): Promise<string | null> {
+    if (!isValidObjectId(patientId)) return null;
+    const patient = await PatientModel.findById(patientId).select('assignedToUserId userId');
+    if (!patient) return null;
+    const uid = (patient as any).assignedToUserId || (patient as any).userId;
+    return uid ? uid.toString() : null;
   }
 
   // ===========================================

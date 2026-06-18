@@ -12,10 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Eye, FileText, Calendar, AlertTriangle, Users } from "lucide-react";
+import { Search, FileText, AlertTriangle, Users } from "lucide-react";
 import { apiGet } from "@/services/api";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import PatientReportsModal from "@/components/PatientReportsModal";
+import { getClinicBySlug } from "@/constants/clinics";
 
 interface Patient {
   _id: string;
@@ -48,20 +50,28 @@ const calculateAge = (dob: string): number => {
   return age;
 };
 
-export default function PatientList({ clinicName = "التشخيص والأشعة", onViewPatient }: PatientListProps) {
+export default function PatientList({
+  clinicName = getClinicBySlug("oral-diagnosis-periodontology")?.nameAr || "التشخيص وعلاج اللثة",
+}: PatientListProps) {
   const { language } = useLanguage();
+  const { userType } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [diagnosisModalOpen, setDiagnosisModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<{ userId: string; name: string } | null>(null);
+  const isDoctorScoped = userType === "doctor" || userType === "graduate";
 
   // Translations
   const t = {
     title: {
-      ar: "قائمة المرضى",
-      en: "Patient List"
+      ar: isDoctorScoped ? "مرضاي" : "قائمة المرضى",
+      en: isDoctorScoped ? "My Patients" : "Patient List"
+    },
+    subtitle: {
+      ar: isDoctorScoped ? "المرضى الذين لديهم مواعيد أو زيارات مسجلة معك." : "قائمة المرضى المسجلين في النظام.",
+      en: isDoctorScoped ? "Patients who have appointments or visits recorded with you." : "Patients registered in the system."
     },
     searchPlaceholder: {
       ar: "البحث عن مريض...",
@@ -82,8 +92,6 @@ export default function PatientList({ clinicName = "التشخيص والأشع�
       completed: { ar: "مكتمل", en: "Completed" }
     },
     buttons: {
-      view: { ar: "عرض", en: "View" },
-      plan: { ar: "الخطة", en: "Plan" },
       reports: { ar: "التقارير", en: "Reports" },
       retry: { ar: "إعادة المحاولة", en: "Retry" }
     },
@@ -96,12 +104,12 @@ export default function PatientList({ clinicName = "التشخيص والأشع�
       en: "Error loading patient list"
     },
     empty: {
-      ar: "لا يوجد مرضى",
-      en: "No Patients Found"
+      ar: isDoctorScoped ? "لا يوجد مرضى مرتبطون بك حتى الآن" : "لا يوجد مرضى",
+      en: isDoctorScoped ? "No patients linked to you yet" : "No Patients Found"
     },
     emptyDesc: {
-      ar: "لم يتم العثور على مرضى في النظام",
-      en: "No patients found in the system"
+      ar: isDoctorScoped ? "سيظهر هنا المرضى الذين قاموا بحجز مواعيد معك." : "لم يتم العثور على مرضى في النظام",
+      en: isDoctorScoped ? "Patients who book appointments with you will appear here." : "No patients found in the system"
     },
     noResults: {
       ar: "لا توجد نتائج للبحث",
@@ -205,8 +213,11 @@ export default function PatientList({ clinicName = "التشخيص والأشع�
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <CardTitle className="text-2xl">
-            {t.title[language]} {clinicName && `- ${clinicName}`}
+            {t.title[language]} {clinicName && clinicName !== "الكل" && !isDoctorScoped ? `- ${clinicName}` : ""}
           </CardTitle>
+          <p className="w-full text-sm text-muted-foreground md:w-auto">
+            {t.subtitle[language]}
+          </p>
           <div className="relative w-full md:w-80">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -274,26 +285,7 @@ export default function PatientList({ clinicName = "التشخيص والأشع�
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => {
-                              onViewPatient?.(patientId);
-                            }}
-                            data-testid={`button-view-patient-${patientId}`}
-                          >
-                            <Eye className="h-4 w-4 ml-1" />
-                            {t.buttons.view[language]}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onViewPatient?.(patientId)}
-                            data-testid={`button-treatment-${patientId}`}
-                          >
-                            <Calendar className="h-4 w-4 ml-1" />
-                            {t.buttons.plan[language]}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
+                            className="gap-1"
                             onClick={() => {
                               // Open diagnosis reports modal
                               // Use assignedToUserId which links patient record to user who performs diagnosis
@@ -303,7 +295,7 @@ export default function PatientList({ clinicName = "التشخيص والأشع�
                             }}
                             data-testid={`button-reports-${patientId}`}
                           >
-                            <FileText className="h-4 w-4 ml-1" />
+                            <FileText className="h-4 w-4" />
                             {t.buttons.reports[language]}
                           </Button>
                         </div>

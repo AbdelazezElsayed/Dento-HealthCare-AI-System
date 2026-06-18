@@ -13,6 +13,8 @@ if (!MONGODB_URI) {
     process.exit(1);
 }
 
+const mongoUri = MONGODB_URI;
+
 // Define Clinic Schema (same as in mongodb.ts)
 const clinicSchema = new mongoose.Schema({
     name: { type: String, required: true },
@@ -111,7 +113,7 @@ async function seedClinics() {
     try {
         // Connect to MongoDB
         console.log('📡 Connecting to MongoDB...');
-        await mongoose.connect(MONGODB_URI);
+        await mongoose.connect(mongoUri);
         console.log('✅ Connected to MongoDB\n');
 
         // Check if clinics already exist

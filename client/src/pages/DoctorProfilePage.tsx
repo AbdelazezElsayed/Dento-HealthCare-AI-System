@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Star, Users, Calendar, Award, Phone, Mail, MapPin, Edit } from "lucide-react";
 import { motion } from "framer-motion";
+import { getClinicBySlug } from "@/constants/clinics";
 
 interface DoctorProfile {
   id: string;
@@ -29,8 +30,8 @@ export default function DoctorProfilePage() {
   const [doctor] = useState<DoctorProfile>({
     id: "1",
     name: "د. أحمد محمد",
-    specialty: "استشاري التشخيص والأشعة",
-    clinic: "التشخيص والأشعة",
+    specialty: "استشاري التشخيص وعلاج اللثة",
+    clinic: getClinicBySlug("oral-diagnosis-periodontology")?.nameAr || "التشخيص وعلاج اللثة",
     experience: "15 سنة خبرة",
     rating: 4.9,
     reviews: 156,

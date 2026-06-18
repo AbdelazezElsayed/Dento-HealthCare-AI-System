@@ -71,7 +71,7 @@ export function validateParams<T extends ZodSchema>(schema: T) {
 
 // Auth schemas
 export const loginSchema = z.object({
-    email: z.string().email('Invalid email address'),
+    identifier: z.string().min(1, 'Email or username is required'),
     password: z.string().min(6, 'Password must be at least 6 characters'),
     userType: z.enum(['patient', 'doctor', 'student', 'graduate', 'admin']).optional(),
 });
@@ -82,14 +82,22 @@ export const registerSchema = z.object({
         .min(8, 'Password must be at least 8 characters')
         .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
         .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-        .regex(/[0-9]/, 'Password must contain at least one number')
-        .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
+        .regex(/[0-9]/, 'Password must contain at least one number'),
     fullName: z.string().min(2, 'Full name is required'),
     email: z.string().email().optional().nullable(),
     phone: z.string().optional().nullable(),
     userType: z.enum(['patient', 'doctor', 'student', 'graduate', 'admin']),
     specialization: z.string().optional(),
     clinicId: z.string().optional().nullable(),
+});
+
+export const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+        .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+        .regex(/[0-9]/, 'Password must contain at least one number'),
 });
 
 // Patient schema

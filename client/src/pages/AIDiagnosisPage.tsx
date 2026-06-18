@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +35,10 @@ import {
   Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { apiPost } from "@/services/api";
+import { queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { getClinicBySlug, resolveClinicSlug } from "@/constants/clinics";
 
 interface Question {
   id: string;
@@ -44,19 +48,453 @@ interface Question {
   options?: { value: string; label: string; labelEn: string }[];
 }
 
+interface DiagnosisCondition {
+  name: string;
+  nameEn?: string;
+  conditionKey?: string;
+  probability: number;
+  description?: string;
+}
+
+interface DiagnosisOtherFinding {
+  condition: string;
+  explanation?: string;
+  relationToCase?: string;
+  recommendedAction?: string;
+}
+
+interface DiagnosisResult {
+  primaryCondition?: string;
+  affectedTooth?: string;
+  patientExplanation?: string;
+  analysisIndicators?: string[];
+  recommendedAction?: string;
+  urgencyReason?: string;
+  conditions: DiagnosisCondition[];
+  recommendations: string[];
+  urgency: "high" | "medium" | "low";
+  confidence: number;
+  suggestedClinic?: {
+    id?: string;
+    name?: string;
+    nameAr?: string;
+    nameEn?: string;
+  };
+  suggestedClinicReason?: string;
+  otherFindings?: DiagnosisOtherFinding[];
+  disclaimer?: {
+    text?: string;
+  };
+  isLocalFallback?: boolean;
+}
+
+const clinicInfo = (slug: string) => {
+  const clinic = getClinicBySlug(slug);
+  return {
+    clinicId: clinic?.id || slug,
+    clinicName: clinic?.nameAr || "",
+    clinicNameEn: clinic?.nameEn || "",
+  };
+};
+
 const clinicConditionMapping: Record<string, { clinicId: string; clinicName: string; clinicNameEn: string }> = {
-  dental_caries: { clinicId: "conservative", clinicName: "العلاج التحفظي", clinicNameEn: "Conservative Treatment" },
-  gingivitis: { clinicId: "gums", clinicName: "علاج اللثة", clinicNameEn: "Gum Treatment" },
-  tooth_sensitivity: { clinicId: "conservative", clinicName: "العلاج التحفظي", clinicNameEn: "Conservative Treatment" },
-  root_canal: { clinicId: "conservative", clinicName: "العلاج التحفظي", clinicNameEn: "Conservative Treatment" },
-  extraction: { clinicId: "surgery", clinicName: "جراحة الفم", clinicNameEn: "Oral Surgery" },
-  orthodontic: { clinicId: "orthodontics", clinicName: "تقويم الأسنان", clinicNameEn: "Orthodontics" },
-  cosmetic: { clinicId: "cosmetic", clinicName: "تجميل الأسنان", clinicNameEn: "Cosmetic Dentistry" },
-  implant: { clinicId: "implants", clinicName: "زراعة الأسنان", clinicNameEn: "Dental Implants" },
-  pediatric: { clinicId: "pediatric", clinicName: "أسنان الأطفال", clinicNameEn: "Pediatric Dentistry" },
-  periodontitis: { clinicId: "gums", clinicName: "علاج اللثة", clinicNameEn: "Gum Treatment" },
-  dentures: { clinicId: "removable", clinicName: "التركيبات المتحركة", clinicNameEn: "Removable Prosthetics" },
-  crowns: { clinicId: "fixed", clinicName: "التركيبات الثابتة", clinicNameEn: "Fixed Prosthetics" },
+  dental_caries: clinicInfo("conservative-dentistry"),
+  gingivitis: clinicInfo("oral-diagnosis-periodontology"),
+  tooth_sensitivity: clinicInfo("conservative-dentistry"),
+  root_canal: clinicInfo("endodontics"),
+  extraction: clinicInfo("oral-surgery"),
+  orthodontic: clinicInfo("orthodontics"),
+  cosmetic: clinicInfo("cosmetic-dentistry"),
+  implant: clinicInfo("implant-dentistry"),
+  pediatric: clinicInfo("pediatric-special-care-dentistry"),
+  periodontitis: clinicInfo("oral-diagnosis-periodontology"),
+  dentures: clinicInfo("removable-prosthodontics"),
+  crowns: clinicInfo("fixed-prosthodontics"),
+};
+
+const normalizePercentScore = (value: unknown, fallback = 0): number => {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+
+  const percentage = numericValue > 0 && numericValue <= 1
+    ? numericValue * 100
+    : numericValue;
+
+  return Math.max(0, Math.min(100, Math.round(percentage)));
+};
+
+const getClinicName = (
+  clinic: { id?: string; name?: string; nameAr?: string; nameEn?: string } | undefined,
+  language: "ar" | "en",
+) => {
+  if (!clinic) return "";
+  const resolvedSlug = resolveClinicSlug(clinic.id || clinic.nameAr || clinic.nameEn || clinic.name);
+  const canonicalClinic = typeof resolvedSlug === "string" ? getClinicBySlug(resolvedSlug) : undefined;
+  if (canonicalClinic) {
+    return language === "ar" ? canonicalClinic.nameAr : canonicalClinic.nameEn;
+  }
+  return language === "ar"
+    ? clinic.nameAr || clinic.name || clinic.nameEn || ""
+    : clinic.nameEn || clinic.name || clinic.nameAr || "";
+};
+
+const buildBookingUrl = (
+  clinic: { id?: string; name?: string; nameAr?: string; nameEn?: string } | undefined,
+  language: "ar" | "en",
+) => {
+  const params = new URLSearchParams();
+  const resolvedSlug = resolveClinicSlug(clinic?.id || clinic?.nameAr || clinic?.nameEn || clinic?.name);
+  const canonicalClinic = typeof resolvedSlug === "string" ? getClinicBySlug(resolvedSlug) : undefined;
+  if (canonicalClinic?.id) params.set("clinicId", canonicalClinic.id);
+  const displayName = canonicalClinic
+    ? (language === "ar" ? canonicalClinic.nameAr : canonicalClinic.nameEn)
+    : getClinicName(clinic, language);
+  if (displayName) params.set("clinicName", displayName);
+  return params.toString() ? `/appointments?${params.toString()}` : "/appointments";
+};
+
+const normalizeDiagnosisResultScores = (result: DiagnosisResult | null): DiagnosisResult | null => {
+  if (!result) return result;
+  return {
+    ...result,
+    confidence: normalizePercentScore(result.confidence),
+    conditions: Array.isArray(result.conditions)
+      ? result.conditions.map((condition: DiagnosisCondition) => ({
+          ...condition,
+          probability: normalizePercentScore(condition.probability),
+        }))
+      : result.conditions,
+  };
+};
+
+const getConditionIdentity = (condition: DiagnosisCondition) =>
+  (condition.conditionKey || condition.nameEn || condition.name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const getUniqueConditions = (conditions: DiagnosisCondition[]) => {
+  const seen = new Set<string>();
+  return conditions.filter((condition) => {
+    const identity = getConditionIdentity(condition);
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+};
+
+const getUrgencyInfo = (urgency: DiagnosisResult["urgency"], language: "ar" | "en") => {
+  const labels = {
+    high: {
+      label: language === "ar" ? "درجة استعجال عالية" : "High urgency",
+      className: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200 border-red-200 dark:border-red-900",
+    },
+    medium: {
+      label: language === "ar" ? "درجة استعجال متوسطة" : "Medium urgency",
+      className: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200 border-amber-200 dark:border-amber-900",
+    },
+    low: {
+      label: language === "ar" ? "درجة استعجال منخفضة" : "Low urgency",
+      className: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-200 border-green-200 dark:border-green-900",
+    },
+  };
+
+  return labels[urgency];
+};
+
+const getConfidenceLabel = (confidence: number, language: "ar" | "en") => {
+  if (confidence >= 85) return language === "ar" ? "مرجح جدًا" : "Very likely";
+  if (confidence >= 70) return language === "ar" ? "مرجح" : "Likely";
+  if (confidence >= 50) return language === "ar" ? "محتمل" : "Possible";
+  return language === "ar" ? "يحتاج تأكيد سريري" : "Needs clinical confirmation";
+};
+
+const getConditionName = (condition: DiagnosisCondition | undefined, language: "ar" | "en") => {
+  if (!condition) return "";
+  return language === "ar" ? condition.name : condition.nameEn || condition.name;
+};
+
+const cleanGeneratedText = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const cleanGeneratedList = (values: unknown) =>
+  Array.isArray(values)
+    ? values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [];
+
+type PatientExplanation = {
+  meaning: string;
+  why: string;
+  nextStep: string;
+  evidence: string;
+};
+
+const conditionExplanationMap: Record<string, { ar: PatientExplanation; en: PatientExplanation }> = {
+  dental_caries: {
+    ar: {
+      meaning: "تلف في طبقة السن بسبب البكتيريا، وقد يسبب ألمًا أو حساسية إذا وصل إلى طبقات أعمق.",
+      why: "قد يظهر هذا التقييم عند وجود ألم مع الأكل أو حساسية أو وصف يشير إلى وجود تسوس.",
+      nextStep: "احجز كشفًا في عيادة العلاج التحفظي ليحدد الطبيب هل تحتاج حشوًا أو علاجًا آخر.",
+      evidence: "الأعراض المذكورة تتوافق مع مشاكل التسوس أو تآكل طبقة السن.",
+    },
+    en: {
+      meaning: "Damage in the tooth surface caused by bacteria, which may lead to pain or sensitivity if it reaches deeper layers.",
+      why: "This may be suggested when pain with eating, sensitivity, or decay-like symptoms are reported.",
+      nextStep: "Book a visit with the conservative dentistry clinic so the doctor can decide whether a filling or another treatment is needed.",
+      evidence: "The reported symptoms fit a tooth decay or enamel damage pattern.",
+    },
+  },
+  gingivitis: {
+    ar: {
+      meaning: "تهيج في اللثة قد يظهر مع نزيف أو احمرار أو ألم بسيط حول الأسنان.",
+      why: "قد يظهر هذا التقييم عند وجود نزيف أو تورم أو عناية فموية غير منتظمة.",
+      nextStep: "راجع عيادة التشخيص وعلاج اللثة للفحص والتنظيف وتحديد سبب الالتهاب.",
+      evidence: "الأعراض المذكورة تدعم احتمال وجود التهاب أو تهيج في اللثة.",
+    },
+    en: {
+      meaning: "Gum irritation that may appear with bleeding, redness, or mild pain around the teeth.",
+      why: "This may be suggested when bleeding, swelling, or irregular oral hygiene is reported.",
+      nextStep: "Visit the oral diagnosis and periodontology clinic for examination, cleaning, and confirmation of the cause.",
+      evidence: "The reported symptoms support possible gum inflammation or irritation.",
+    },
+  },
+  periodontitis: {
+    ar: {
+      meaning: "التهاب أعمق في أنسجة اللثة المحيطة بالأسنان، وقد يؤثر في ثبات السن إذا لم يعالج.",
+      why: "قد يظهر عند وجود نزيف متكرر أو حركة في الأسنان أو علامات التهاب مستمرة.",
+      nextStep: "احجز مراجعة في عيادة التشخيص وعلاج اللثة لتقييم مستوى الالتهاب ووضع خطة علاج مناسبة.",
+      evidence: "وجود أعراض لثوية مستمرة يجعل مراجعة الطبيب مهمة للتأكد من الحالة.",
+    },
+    en: {
+      meaning: "A deeper inflammation around the teeth that can affect tooth support if it is not treated.",
+      why: "This may be suggested with repeated bleeding, loose teeth, or ongoing gum inflammation signs.",
+      nextStep: "Book with the oral diagnosis and periodontology clinic to assess inflammation level and choose the right treatment plan.",
+      evidence: "Ongoing gum symptoms make clinical confirmation important.",
+    },
+  },
+  root_canal: {
+    ar: {
+      meaning: "قد يكون الألم مرتبطًا بتهيج أو التهاب في عصب السن، وهو ما قد يحتاج تقييمًا سريعًا.",
+      why: "يظهر هذا التقييم عادة مع ألم شديد أو مستمر أو ألم يزداد مع الحرارة أو البرودة.",
+      nextStep: "احجز في عيادة طب وجراحة الجذور لتحديد هل يحتاج السن علاج عصب.",
+      evidence: "طبيعة الألم الموصوفة قد تكون مرتبطة بعصب السن.",
+    },
+    en: {
+      meaning: "The pain may be related to irritation or inflammation of the tooth nerve and may need prompt assessment.",
+      why: "This is often suggested with severe, persistent, or temperature-triggered tooth pain.",
+      nextStep: "Book with the endodontics clinic to check whether root canal treatment is needed.",
+      evidence: "The pain pattern may be linked to the tooth nerve.",
+    },
+  },
+  pulpitis: {
+    ar: {
+      meaning: "تهيج أو التهاب في عصب السن، وقد يسبب ألمًا شديدًا أو مستمرًا ويحتاج تقييمًا سريعًا.",
+      why: "قد يظهر مع ألم نابض أو ألم يستمر بعد زوال المؤثر مثل البرودة أو الحرارة.",
+      nextStep: "راجع طبيب الأسنان قريبًا لتحديد سبب التهاب العصب وخطة العلاج المناسبة.",
+      evidence: "الأعراض المذكورة تتشابه مع علامات تهيج عصب السن.",
+    },
+    en: {
+      meaning: "Irritation or inflammation of the tooth nerve that can cause severe or persistent pain and needs prompt evaluation.",
+      why: "This may appear with throbbing pain or pain that continues after cold or heat is removed.",
+      nextStep: "See a dentist soon to confirm the nerve condition and choose the right treatment.",
+      evidence: "The reported symptoms resemble tooth nerve irritation signs.",
+    },
+  },
+  abscess: {
+    ar: {
+      meaning: "تجمع صديد مرتبط بعدوى، ويحتاج مراجعة عاجلة لتجنب انتشار الالتهاب.",
+      why: "قد يظهر عند وجود تورم أو ألم شديد أو علامات عدوى حول السن أو اللثة.",
+      nextStep: "احجز موعدًا عاجلًا، وإذا كان هناك تورم شديد أو حرارة أو صعوبة بلع فاطلب رعاية طارئة.",
+      evidence: "وجود ألم مع تورم أو علامات عدوى يجعل التقييم العاجل ضروريًا.",
+    },
+    en: {
+      meaning: "A pocket of pus related to infection that needs urgent review to prevent spread.",
+      why: "This may be suggested with swelling, severe pain, or infection signs around a tooth or gum.",
+      nextStep: "Book urgent care; if swelling is severe or you have fever or swallowing difficulty, seek emergency care.",
+      evidence: "Pain with swelling or infection signs makes urgent assessment important.",
+    },
+  },
+  impacted_wisdom_tooth: {
+    ar: {
+      meaning: "سن لم يخرج بشكل طبيعي وقد يسبب ألمًا أو ضغطًا أو التهابًا حوله.",
+      why: "قد يظهر هذا التقييم عند وجود ألم خلفي في الفك أو ضغط أو التهاب حول ضرس العقل.",
+      nextStep: "راجع عيادة جراحة الفم لتقييم الضرس وصورة الأشعة إن لزم الأمر.",
+      evidence: "مكان الألم ووصفه قد يتوافقان مع مشكلة في ضرس العقل.",
+    },
+    en: {
+      meaning: "A tooth that has not erupted normally and may cause pain, pressure, or inflammation around it.",
+      why: "This may be suggested with back-jaw pain, pressure, or inflammation around a wisdom tooth.",
+      nextStep: "Visit oral surgery for examination and X-ray review if needed.",
+      evidence: "The pain location and description may fit a wisdom tooth problem.",
+    },
+  },
+  extraction: {
+    ar: {
+      meaning: "قد تكون هناك مشكلة متقدمة في السن تجعل الطبيب يقيّم هل يمكن علاجه أو يحتاج خلعًا.",
+      why: "يظهر هذا الاحتمال عندما تكون الأعراض شديدة أو عندما تبدو حالة السن بحاجة لتدخل أكبر.",
+      nextStep: "لا تفترض أن الخلع مؤكد؛ احجز فحصًا ليقرر الطبيب أفضل خيار آمن.",
+      evidence: "التقييم يشير إلى احتمال يحتاج قرارًا سريريًا بعد الفحص.",
+    },
+    en: {
+      meaning: "There may be an advanced tooth problem, so the doctor needs to decide whether it can be treated or may need removal.",
+      why: "This may appear when symptoms are severe or the tooth may need a more involved intervention.",
+      nextStep: "Do not assume extraction is final; book an exam so the doctor can choose the safest option.",
+      evidence: "This finding needs a clinical decision after examination.",
+    },
+  },
+  tooth_sensitivity: {
+    ar: {
+      meaning: "حساسية في السن قد تظهر مع البارد أو الساخن أو الحلويات، وقد تكون بسبب تآكل أو تسوس أو انكشاف جزء من السن.",
+      why: "قد يظهر هذا التقييم عندما تكون الشكوى مرتبطة بالحساسية أكثر من الألم المستمر.",
+      nextStep: "راجع الطبيب لتحديد السبب وتجنب استخدام علاجات عشوائية قبل الفحص.",
+      evidence: "وصف الحساسية يدعم احتمال وجود تهيج أو انكشاف في السن.",
+    },
+    en: {
+      meaning: "Tooth sensitivity can appear with cold, heat, or sweets and may be caused by wear, decay, or exposed tooth surfaces.",
+      why: "This may be suggested when the complaint is sensitivity rather than continuous pain.",
+      nextStep: "See a dentist to identify the cause before using random treatments.",
+      evidence: "The sensitivity pattern supports possible tooth surface irritation or exposure.",
+    },
+  },
+};
+
+const conditionAliasMap: Record<string, string> = {
+  caries: "dental_caries",
+  cavity: "dental_caries",
+  decay: "dental_caries",
+  "تسوس": "dental_caries",
+  gingivitis: "gingivitis",
+  gum: "gingivitis",
+  "التهاب اللثة": "gingivitis",
+  periodontitis: "periodontitis",
+  pulpitis: "pulpitis",
+  nerve: "pulpitis",
+  "عصب": "root_canal",
+  root_canal: "root_canal",
+  endodontic: "root_canal",
+  abscess: "abscess",
+  infection: "abscess",
+  "خراج": "abscess",
+  impacted: "impacted_wisdom_tooth",
+  wisdom: "impacted_wisdom_tooth",
+  "ضرس العقل": "impacted_wisdom_tooth",
+  extraction: "extraction",
+  "خلع": "extraction",
+  sensitivity: "tooth_sensitivity",
+  "حساسية": "tooth_sensitivity",
+};
+
+const resolveExplanationKey = (condition: DiagnosisCondition | undefined) => {
+  if (!condition) return "";
+  const identity = `${condition.conditionKey || ""} ${condition.name || ""} ${condition.nameEn || ""}`.toLowerCase();
+  if (condition.conditionKey && conditionExplanationMap[condition.conditionKey]) return condition.conditionKey;
+  const match = Object.entries(conditionAliasMap).find(([alias]) => identity.includes(alias.toLowerCase()));
+  return match?.[1] || "";
+};
+
+const getPatientExplanation = (
+  condition: DiagnosisCondition | undefined,
+  language: "ar" | "en",
+): PatientExplanation => {
+  const key = resolveExplanationKey(condition);
+  const mapped = key ? conditionExplanationMap[key]?.[language] : undefined;
+  if (mapped) return mapped;
+
+  const cleanDescription = condition?.description ? truncateClinicalText(condition.description, 150) : "";
+
+  return language === "ar"
+    ? {
+        meaning: "هذه إشارة أولية إلى مشكلة في الأسنان أو اللثة تحتاج فحصًا مباشرًا للتأكد منها.",
+        why: cleanDescription || "ظهر هذا التقييم بناءً على الأعراض والمعلومات التي أدخلتها.",
+        nextStep: "احجز موعدًا مع العيادة المقترحة ليؤكد الطبيب الحالة ويشرح خيارات العلاج.",
+        evidence: cleanDescription || "الأعراض الحالية تحتاج مراجعة سريرية قبل اعتبارها تشخيصًا نهائيًا.",
+      }
+    : {
+        meaning: "This is an initial sign of a tooth or gum problem that needs direct examination to confirm.",
+        why: cleanDescription || "This was suggested from the symptoms and information you entered.",
+        nextStep: "Book with the recommended clinic so the doctor can confirm the case and explain treatment options.",
+        evidence: cleanDescription || "The current symptoms need clinical review before they can be treated as a final diagnosis.",
+      };
+};
+
+const truncateClinicalText = (text: string, maxLength = 230) => {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLength) return clean;
+  const firstSentence = clean.match(/^(.+?[.!؟。])\s/)?.[1];
+  if (firstSentence && firstSentence.length <= maxLength) return firstSentence;
+  return `${clean.slice(0, maxLength).trim()}...`;
+};
+
+const extractAffectedTooth = (conditions: DiagnosisCondition[]) => {
+  const text = conditions
+    .map((condition) => `${condition.name} ${condition.nameEn || ""} ${condition.description || ""}`)
+    .join(" ");
+  const match = text.match(/(?:tooth|teeth|سن|السن|رقم)\s*(?:number|no\.?|#|رقم)?\s*[:#-]?\s*(\d{1,2})/i);
+  return match?.[1] || null;
+};
+
+const toothLabelByNumber: Record<string, { ar: string; en: string }> = {
+  "16": {
+    ar: "الضرس العلوي الأيمن الأول — رقم 16",
+    en: "Upper right first molar — tooth 16",
+  },
+};
+
+const formatAffectedTooth = (value: string | null | undefined, language: "ar" | "en") => {
+  const cleaned = cleanGeneratedText(value);
+  if (!cleaned) return "";
+
+  const toothNumber = cleaned.match(/\d{1,2}/)?.[0] || "";
+  const mapped = toothNumber ? toothLabelByNumber[toothNumber]?.[language] : "";
+  if (mapped) return mapped;
+
+  if (language === "ar") {
+    if (/^\d{1,2}$/.test(cleaned)) return `السن المتأثر — رقم ${cleaned}`;
+    return cleaned.replace(/\s*[،,]\s*رقم\s*/g, " — رقم ");
+  }
+
+  if (/^\d{1,2}$/.test(cleaned)) return `Tooth ${cleaned}`;
+  return cleaned.replace(/#\s*(\d{1,2})/g, "tooth $1");
+};
+
+const getGeneratedFindingIdentity = (finding: DiagnosisOtherFinding) =>
+  cleanGeneratedText(finding.condition).toLowerCase().replace(/\s+/g, " ").trim();
+
+const buildSupportingFindings = (
+  result: DiagnosisResult,
+  primaryCondition: DiagnosisCondition | undefined,
+  language: "ar" | "en",
+) => {
+  const affectedTooth = extractAffectedTooth(result.conditions);
+  const combinedText = result.conditions
+    .map((condition) => `${condition.description || ""} ${condition.name} ${condition.nameEn || ""}`)
+    .join(" ")
+    .toLowerCase();
+  const hasRadiographicFinding = /x-ray|xray|radiograph|radiographic|شعاع|أشعة|اشعة|صورة/.test(combinedText);
+  const affectedToothLabel = formatAffectedTooth(affectedTooth, language);
+
+  const findings = [
+    result.urgency === "high"
+      ? (language === "ar" ? "أعراض تستدعي مراجعة عاجلة" : "Symptoms require urgent dental review")
+      : (language === "ar" ? "مؤشرات تحتاج تقييمًا سريريًا" : "Findings require clinical assessment"),
+    affectedToothLabel
+      ? (language === "ar" ? `السن المتأثر: ${affectedToothLabel}` : `Affected tooth: ${affectedToothLabel}`)
+      : null,
+    hasRadiographicFinding
+      ? (language === "ar" ? "علامات شعاعية داعمة" : "Supporting radiographic signs")
+      : (language === "ar" ? "البيانات الحالية تدعم التقييم الأولي" : "Current information supports the preliminary assessment"),
+    primaryCondition?.conditionKey
+      ? (language === "ar" ? "مرتبط بالشكوى الأساسية للمريض" : "Aligned with the patient's main complaint")
+      : null,
+    language === "ar"
+      ? "توجد بيانات كافية لتوجيه الحالة للعيادة المناسبة"
+      : "There is enough information to guide the case to the appropriate clinic",
+  ].filter((item): item is string => !!item?.trim());
+
+  return Array.from(new Set(findings.map((item) => item.trim()))).slice(0, 4);
 };
 
 const diagnosisQuestions: Question[] = [
@@ -226,15 +664,56 @@ const diagnosisQuestions: Question[] = [
 
 export default function AIDiagnosisPage() {
   const { language } = useLanguage();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [currentStep, setCurrentStep] = useState(() => {
+    const saved = sessionStorage.getItem("ai_diagnosis_step");
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [answers, setAnswers] = useState<Record<string, string>>(() => {
+    const saved = sessionStorage.getItem("ai_diagnosis_answers");
+    return saved ? JSON.parse(saved) : {};
+  });
   const [xrayImage, setXrayImage] = useState<File | null>(null);
   const [xrayPreview, setXrayPreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [diagnosisResult, setDiagnosisResult] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("questions");
+  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(() => {
+    const saved = sessionStorage.getItem("ai_diagnosis_result");
+    return saved ? normalizeDiagnosisResultScores(JSON.parse(saved)) : null;
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = sessionStorage.getItem("ai_diagnosis_result");
+    return saved ? "result" : "questions";
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    sessionStorage.setItem("ai_diagnosis_step", currentStep.toString());
+  }, [currentStep]);
+
+  useEffect(() => {
+    sessionStorage.setItem("ai_diagnosis_answers", JSON.stringify(answers));
+  }, [answers]);
+
+  useEffect(() => {
+    if (diagnosisResult) {
+      sessionStorage.setItem("ai_diagnosis_result", JSON.stringify(diagnosisResult));
+    } else {
+      sessionStorage.removeItem("ai_diagnosis_result");
+    }
+  }, [diagnosisResult]);
+
+  const startNewDiagnosis = () => {
+    sessionStorage.removeItem("ai_diagnosis_step");
+    sessionStorage.removeItem("ai_diagnosis_answers");
+    sessionStorage.removeItem("ai_diagnosis_result");
+    setCurrentStep(0);
+    setAnswers({});
+    setDiagnosisResult(null);
+    setXrayImage(null);
+    setXrayPreview(null);
+    setActiveTab("questions");
+  };
 
   const translations = {
     ar: {
@@ -512,7 +991,7 @@ export default function AIDiagnosisPage() {
       orthodontic: { nameAr: "تقويم الأسنان", nameEn: "Orthodontics", descAr: "يحتاج إلى تقويم لترتيب الأسنان", descEn: "Needs braces for teeth alignment" },
       cosmetic: { nameAr: "تجميل الأسنان", nameEn: "Cosmetic Dentistry", descAr: "إجراءات تجميلية لتحسين المظهر", descEn: "Cosmetic procedures to improve appearance" },
       implant: { nameAr: "زراعة الأسنان", nameEn: "Dental Implant", descAr: "زراعة لتعويض الأسنان المفقودة", descEn: "Implant to replace missing teeth" },
-      pediatric: { nameAr: "أسنان الأطفال", nameEn: "Pediatric Dentistry", descAr: "رعاية أسنان خاصة بالأطفال", descEn: "Special dental care for children" },
+      pediatric: { nameAr: "أسنان الأطفال والاحتياجات الخاصة", nameEn: "Pediatric and Special Care Dentistry", descAr: "رعاية أسنان خاصة بالأطفال وذوي الاحتياجات الخاصة", descEn: "Special dental care for children and special care patients" },
       periodontitis: { nameAr: "أمراض اللثة المتقدمة", nameEn: "Periodontitis", descAr: "التهاب متقدم في اللثة يحتاج علاج متخصص", descEn: "Advanced gum disease requiring specialized treatment" },
       dentures: { nameAr: "أطقم الأسنان", nameEn: "Dentures", descAr: "تركيبات متحركة لتعويض الأسنان", descEn: "Removable prosthetics to replace teeth" },
       crowns: { nameAr: "التيجان", nameEn: "Crowns", descAr: "تيجان ثابتة لحماية الأسنان", descEn: "Fixed crowns to protect teeth" },
@@ -549,7 +1028,7 @@ export default function AIDiagnosisPage() {
     return language === "ar" ? baseRecs.ar : baseRecs.en;
   };
 
-  const getUrgency = (conditions: { conditionKey: string; probability: number }[], painIntensity: number) => {
+  const getUrgency = (conditions: { conditionKey: string; probability: number }[], painIntensity: number): DiagnosisResult["urgency"] => {
     const urgentConditions = ["root_canal", "extraction", "periodontitis"];
     const primaryCondition = conditions[0]?.conditionKey;
 
@@ -567,47 +1046,83 @@ export default function AIDiagnosisPage() {
     setActiveTab("result");
 
     try {
-      const response = await fetch('/api/ai/diagnosis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          answers,
-          symptomSummary: formatSymptomsForAI(),
-          xrayImage: xrayPreview,
-          language,
-        }),
+      const response = await apiPost<any>('/v1/ai/diagnosis', {
+        answers,
+        symptomSummary: formatSymptomsForAI(),
+        xrayImage: xrayPreview,
+        language,
       });
 
-      if (!response.ok) {
+      if (!response.success) {
         throw new Error('Failed to get diagnosis');
       }
 
-      const aiResult = await response.json();
+      const aiResult = response.data;
+      
+      // Invalidate history query so it fetches the new record
+      queryClient.invalidateQueries({ queryKey: ["diagnosisHistory"] });
 
-      if (aiResult.conditions && aiResult.conditions.length > 0) {
-        const primaryConditionKey = aiResult.conditions[0]?.conditionKey || "dental_caries";
+      if ((Array.isArray(aiResult.conditions) && aiResult.conditions.length > 0) || aiResult.primaryCondition) {
+        const aiConditions = Array.isArray(aiResult.conditions) ? aiResult.conditions : [];
+        const primaryConditionKey = aiConditions[0]?.conditionKey || "dental_caries";
         const suggestedClinicInfo = clinicConditionMapping[primaryConditionKey] || clinicConditionMapping.dental_caries;
 
         const result = {
-          conditions: aiResult.conditions.map((cond: any) => ({
+          primaryCondition: cleanGeneratedText(aiResult.primaryCondition),
+          affectedTooth: cleanGeneratedText(aiResult.affectedTooth),
+          patientExplanation: cleanGeneratedText(aiResult.patientExplanation),
+          analysisIndicators: cleanGeneratedList(aiResult.analysisIndicators),
+          recommendedAction: cleanGeneratedText(aiResult.recommendedAction),
+          urgencyReason: cleanGeneratedText(aiResult.urgencyReason),
+          conditions: aiConditions.map((cond: any) => ({
             name: cond.name,
             nameEn: cond.nameEn,
             conditionKey: cond.conditionKey,
-            probability: cond.probability,
+            probability: normalizePercentScore(cond.probability),
             description: cond.description,
           })),
           recommendations: aiResult.recommendations || [],
           urgency: aiResult.urgency || "medium",
-          confidence: aiResult.confidence || 70,
-          suggestedClinic: aiResult.suggestedClinic || {
-            id: suggestedClinicInfo.clinicId,
-            name: language === "ar" ? suggestedClinicInfo.clinicName : suggestedClinicInfo.clinicNameEn,
-            nameAr: suggestedClinicInfo.clinicName,
-            nameEn: suggestedClinicInfo.clinicNameEn,
-          },
-          estimatedTreatmentTime: aiResult.estimatedTreatmentTime || (language === "ar" ? "30-45 دقيقة" : "30-45 minutes"),
+          confidence: normalizePercentScore(aiResult.confidence, 70),
+          suggestedClinic: (() => {
+            const rawSuggestedClinic = typeof aiResult.suggestedClinic === "string"
+              ? aiResult.suggestedClinic
+              : aiResult.suggestedClinic?.id ||
+                aiResult.suggestedClinic?.nameAr ||
+                aiResult.suggestedClinic?.nameEn ||
+                aiResult.suggestedClinic?.name;
+            const resolvedClinicSlug = resolveClinicSlug(rawSuggestedClinic);
+            const canonicalClinic = typeof resolvedClinicSlug === "string"
+              ? getClinicBySlug(resolvedClinicSlug)
+              : undefined;
+
+            if (canonicalClinic) {
+              return {
+                id: canonicalClinic.id,
+                name: language === "ar" ? canonicalClinic.nameAr : canonicalClinic.nameEn,
+                nameAr: canonicalClinic.nameAr,
+                nameEn: canonicalClinic.nameEn,
+              };
+            }
+
+            return {
+              id: suggestedClinicInfo.clinicId,
+              name: language === "ar" ? suggestedClinicInfo.clinicName : suggestedClinicInfo.clinicNameEn,
+              nameAr: suggestedClinicInfo.clinicName,
+              nameEn: suggestedClinicInfo.clinicNameEn,
+            };
+          })(),
+          suggestedClinicReason: cleanGeneratedText(aiResult.suggestedClinicReason),
+          otherFindings: Array.isArray(aiResult.otherFindings)
+            ? aiResult.otherFindings
+                .map((finding: DiagnosisOtherFinding) => ({
+                  condition: cleanGeneratedText(finding.condition),
+                  explanation: cleanGeneratedText(finding.explanation),
+                  relationToCase: cleanGeneratedText(finding.relationToCase),
+                  recommendedAction: cleanGeneratedText(finding.recommendedAction),
+                }))
+                .filter((finding: DiagnosisOtherFinding) => finding.condition)
+            : [],
         };
         setDiagnosisResult(result);
       } else {
@@ -628,7 +1143,7 @@ export default function AIDiagnosisPage() {
             name: (language === "ar" ? details.nameAr : details.nameEn) + " (تحليل محلي)",
             nameEn: details.nameEn + " (Local Analysis)",
             conditionKey: cond.conditionKey,
-            probability: cond.probability,
+            probability: normalizePercentScore(cond.probability),
             description: (language === "ar" ? details.descAr : details.descEn) + " - نعتذر، خدمة الذكاء الاصطناعي غير متوفرة حالياً.",
           };
         }),
@@ -641,7 +1156,6 @@ export default function AIDiagnosisPage() {
           nameAr: suggestedClinicInfo.clinicName,
           nameEn: suggestedClinicInfo.clinicNameEn,
         },
-        estimatedTreatmentTime: language === "ar" ? "30-45 دقيقة" : "30-45 minutes",
         isLocalFallback: true
       };
       setDiagnosisResult(result);
@@ -664,16 +1178,15 @@ DIAGNOSIS RESULTS
 ${'-'.repeat(50)}
 
 Urgency Level: ${diagnosisResult.urgency.toUpperCase()}
-Confidence: ${diagnosisResult.confidence}%
-${diagnosisResult.estimatedTreatmentTime ? `Treatment Time: ${diagnosisResult.estimatedTreatmentTime}\n` : ''}
+Assessment Confidence: ${getConfidenceLabel(diagnosisResult.confidence, language)}
 
 CONDITIONS DETECTED:
-${diagnosisResult.conditions.map((c, i) => `
-${i + 1}. ${language === 'ar' ? c.name : c.nameEn || c.name} (${c.probability}%)
+${diagnosisResult.conditions.map((c: DiagnosisCondition, i: number) => `
+${i + 1}. ${language === 'ar' ? c.name : c.nameEn || c.name}
    ${c.description || ''}`).join('\n')}
 
 RECOMMENDATIONS:
-${diagnosisResult.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+${diagnosisResult.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')}
 
 ${diagnosisResult.suggestedClinic ? `\nSUGGESTED CLINIC:\n${language === 'ar' ? diagnosisResult.suggestedClinic.nameAr : diagnosisResult.suggestedClinic.nameEn || diagnosisResult.suggestedClinic.name}\n` : ''}
 DISCLAIMER:
@@ -802,15 +1315,14 @@ ${'='.repeat(50)}
             <strong>${language === 'ar' ? 'مستوى الأهمية' : 'Urgency'}:</strong> 
             <span class="urgency urgency-${diagnosisResult.urgency}">${diagnosisResult.urgency}</span>
           </p>
-          <p><strong>${language === 'ar' ? 'مستوى الثقة' : 'Confidence'}:</strong> ${diagnosisResult.confidence}%</p>
-          ${diagnosisResult.estimatedTreatmentTime ? `<p><strong>${language === 'ar' ? 'وقت العلاج المتوقع' : 'Estimated Treatment Time'}:</strong> ${diagnosisResult.estimatedTreatmentTime}</p>` : ''}
+          <p><strong>${language === 'ar' ? 'مستوى الترجيح' : 'Assessment confidence'}:</strong> ${getConfidenceLabel(diagnosisResult.confidence, language)}</p>
         </div>
 
         <div class="section">
           <div class="section-title">${language === 'ar' ? 'الحالات المكتشفة' : 'Detected Conditions'}</div>
-          ${diagnosisResult.conditions.map(c => `
+          ${diagnosisResult.conditions.map((c: DiagnosisCondition) => `
             <div class="condition">
-              <strong>${language === 'ar' ? c.name : c.nameEn || c.name}</strong> (${c.probability}%)
+              <strong>${language === 'ar' ? c.name : c.nameEn || c.name}</strong>
               ${c.description ? `<p>${c.description}</p>` : ''}
             </div>
           `).join('')}
@@ -818,7 +1330,7 @@ ${'='.repeat(50)}
 
         <div class="section">
           <div class="section-title">${language === 'ar' ? 'التوصيات' : 'Recommendations'}</div>
-          ${diagnosisResult.recommendations.map((r, i) => `
+          ${diagnosisResult.recommendations.map((r: string, i: number) => `
             <div class="recommendation">${i + 1}. ${r}</div>
           `).join('')}
         </div>
@@ -875,7 +1387,7 @@ ${'='.repeat(50)}
           </div>
         </div>
 
-        <h3 className={`text-xl font-semibold ${language === "ar" ? "text-right" : "text-left"}`}>{questionText}</h3>
+        <h3 className="text-xl font-semibold text-start">{questionText}</h3>
 
         {currentQuestion.type === "radio" && currentQuestion.options && (
           <RadioGroup
@@ -891,15 +1403,14 @@ ${'='.repeat(50)}
               >
                 <Label
                   htmlFor={option.value}
-                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${language === "ar" ? "flex-row-reverse" : "flex-row"
-                    } ${answers[currentQuestion.id] === option.value
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${answers[currentQuestion.id] === option.value
                       ? "border-primary bg-primary/5"
                       : "border-muted hover:border-primary/50"
                     }`}
                   dir={language === "ar" ? "rtl" : "ltr"}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
-                  <span className={language === "ar" ? "text-right flex-1" : "text-left flex-1"}>
+                  <span className="flex-1 text-start">
                     {language === "ar" ? option.label : option.labelEn}
                   </span>
                 </Label>
@@ -995,14 +1506,14 @@ ${'='.repeat(50)}
           <Button
             variant="destructive"
             size="sm"
-            className="absolute top-2 right-2"
+            className="absolute top-2 end-2"
             onClick={removeImage}
             data-testid="button-remove-xray"
           >
-            <X className="w-4 h-4 mr-1" />
+            <X className="w-4 h-4 me-1" />
             {t.removeImage}
           </Button>
-          <div className="absolute bottom-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-sm">
+          <div className="absolute bottom-2 start-2 bg-black/70 text-white px-3 py-1 rounded-full text-sm">
             {xrayImage?.name}
           </div>
         </motion.div>
@@ -1029,167 +1540,315 @@ ${'='.repeat(50)}
           <p className="text-muted-foreground">جاري تحليل البيانات والصورة بالذكاء الاصطناعي...</p>
           <Progress value={66} className="w-48 mx-auto mt-4" />
         </motion.div>
-      ) : diagnosisResult ? (
+      ) : diagnosisResult ? (() => {
+        const uniqueConditions = getUniqueConditions(diagnosisResult.conditions);
+        const primaryCondition = uniqueConditions[0];
+        const additionalConditions = uniqueConditions.slice(1);
+        const urgencyInfo = getUrgencyInfo(diagnosisResult.urgency, language);
+        const primaryConditionName = cleanGeneratedText(diagnosisResult.primaryCondition) || getConditionName(primaryCondition, language);
+        const generatedIndicators = cleanGeneratedList(diagnosisResult.analysisIndicators);
+        const supportingFindings = generatedIndicators.length > 0
+          ? Array.from(new Set(generatedIndicators)).slice(0, 4)
+          : buildSupportingFindings(diagnosisResult, primaryCondition, language);
+        const clinicName = getClinicName(diagnosisResult.suggestedClinic, language);
+        const fallbackPrimaryExplanation = getPatientExplanation(primaryCondition, language);
+        const patientExplanation = cleanGeneratedText(diagnosisResult.patientExplanation) || fallbackPrimaryExplanation.meaning;
+        const whySuggested = cleanGeneratedText(diagnosisResult.urgencyReason) || fallbackPrimaryExplanation.why;
+        const recommendedAction = cleanGeneratedText(diagnosisResult.recommendedAction) || fallbackPrimaryExplanation.nextStep;
+        const clinicReason = cleanGeneratedText(diagnosisResult.suggestedClinicReason);
+        const affectedTooth = cleanGeneratedText(diagnosisResult.affectedTooth) || extractAffectedTooth(diagnosisResult.conditions);
+        const affectedToothDisplay = formatAffectedTooth(affectedTooth, language);
+        const primaryConditionIdentity = primaryConditionName.toLowerCase().replace(/\s+/g, " ").trim();
+        const seenGeneratedFindings = new Set<string>();
+        const generatedOtherFindings = Array.isArray(diagnosisResult.otherFindings)
+          ? diagnosisResult.otherFindings
+              .map((finding) => ({
+                condition: cleanGeneratedText(finding.condition),
+                explanation: cleanGeneratedText(finding.explanation),
+                relationToCase: cleanGeneratedText(finding.relationToCase),
+                recommendedAction: cleanGeneratedText(finding.recommendedAction),
+              }))
+              .filter((finding) => {
+                const identity = getGeneratedFindingIdentity(finding);
+                if (!identity || identity === primaryConditionIdentity || seenGeneratedFindings.has(identity)) return false;
+                seenGeneratedFindings.add(identity);
+                return true;
+              })
+          : [];
+        const clinicSecondaryName = language === "ar"
+          ? diagnosisResult.suggestedClinic?.nameEn || diagnosisResult.suggestedClinic?.name || ""
+          : diagnosisResult.suggestedClinic?.nameAr || diagnosisResult.suggestedClinic?.name || "";
+
+        return (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
-          <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-bold flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-primary" />
-              {t.diagnosisResult}
-            </h3>
-            <Badge
-              variant={
-                diagnosisResult.urgency === "high"
-                  ? "destructive"
-                  : diagnosisResult.urgency === "medium"
-                    ? "default"
-                    : "secondary"
-              }
-              className="text-sm px-3 py-1"
-            >
-              {t.urgency}: {diagnosisResult.urgency === "high" ? t.high : diagnosisResult.urgency === "medium" ? t.medium : t.low}
-            </Badge>
-          </div>
-
-          <Card className="border-primary/20">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Stethoscope className="w-5 h-5" />
-                {t.possibleConditions}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {diagnosisResult.conditions.map((condition: any, idx: number) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.1 }}
-                  className="p-4 rounded-lg bg-muted/50"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold">{condition.name}</span>
-                    <Badge variant="outline">{condition.probability}%</Badge>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-white via-primary/5 to-sky-50 dark:from-card dark:via-primary/10 dark:to-slate-900">
+            <CardContent className="p-6 md:p-7">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-primary">
+                    <FileText className="h-5 w-5" />
+                    <span className="text-sm font-semibold">
+                      {language === "ar" ? "تقرير تقييم سريري" : "Clinical Assessment Report"}
+                    </span>
                   </div>
-                  <Progress value={condition.probability} className="h-2 mb-2" />
-                  <p className="text-sm text-muted-foreground">{condition.description}</p>
-                </motion.div>
-              ))}
+                  <div>
+                    <h3 className="text-2xl font-bold">
+                      {language === "ar" ? "نتيجة التشخيص الذكي" : "AI Diagnostic Assessment"}
+                    </h3>
+                    <p className="mt-1 text-sm font-medium text-foreground/75">
+                      {language === "ar"
+                        ? "تقرير مبسط يوضح الحالة والمؤشرات والخطوة المناسبة"
+                        : "A concise report showing the condition, indicators, and next step"}
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={startNewDiagnosis} variant="outline" className="shrink-0 text-primary border-primary">
+                  {language === "ar" ? "ابدأ تشخيص جديد" : "Start New Diagnosis"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                {t.recommendations}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {diagnosisResult.recommendations.map((rec: string, idx: number) => (
-                  <motion.li
-                    key={idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className="flex items-start gap-2"
-                  >
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                    <span>{rec}</span>
-                  </motion.li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
+          <Card className="overflow-hidden border-0 shadow-lg shadow-primary/10">
+            <CardContent className="p-0">
+              <div className="clinical-report-grid">
+                <div className="clinical-report-primary space-y-5 p-6 md:p-8">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="px-3 py-1">
+                      {language === "ar" ? "التقييم الأولي" : "Primary assessment"}
+                    </Badge>
+                    <Badge variant="outline" className={urgencyInfo.className}>
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {urgencyInfo.label}
+                    </Badge>
+                  </div>
 
-          {diagnosisResult.suggestedClinic && (
-            <Card className="border-2 border-primary/30 bg-primary/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Stethoscope className="w-5 h-5 text-primary" />
-                  {t.suggestedClinicTitle}
-                </CardTitle>
-                <CardDescription>{t.basedOnDiagnosis}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
-                      <Stethoscope className="w-6 h-6 text-primary" />
+                  <div className="space-y-3">
+                    <h2 className="text-3xl font-bold leading-tight text-foreground md:text-4xl">
+                      {primaryConditionName || (language === "ar" ? "نتيجة التشخيص" : "Diagnosis Result")}
+                    </h2>
+                    <p className="max-w-3xl text-base font-medium leading-7 text-foreground/80">
+                      {language === "ar"
+                        ? "يعرض هذا التقرير أهم ما ظهر في التحليل بطريقة مختصرة وواضحة."
+                        : "This report summarizes the key assessment points in a clear, concise way."}
+                    </p>
+                    {whySuggested && (
+                      <p className="max-w-3xl text-sm font-medium leading-6 text-foreground/75">
+                        {whySuggested}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {affectedToothDisplay && (
+                      <div className="rounded-lg bg-slate-50 p-4 dark:bg-slate-900/60">
+                        <p className="text-xs font-semibold text-foreground/70">
+                          {language === "ar" ? "السن المتأثر" : "Affected tooth"}
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-foreground">
+                          {affectedToothDisplay}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="clinical-report-clinic flex flex-col justify-between bg-primary/5 p-6 md:p-8 dark:bg-primary/10">
+                  <div className="space-y-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Stethoscope className="h-7 w-7" />
                     </div>
                     <div>
-                      <p className="font-bold text-lg">
-                        {language === "ar" ? diagnosisResult.suggestedClinic.nameAr : diagnosisResult.suggestedClinic.nameEn}
+                      <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                        {language === "ar" ? "العيادة المقترحة" : "Recommended clinic"}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {language === "ar" ? diagnosisResult.suggestedClinic.nameEn : diagnosisResult.suggestedClinic.nameAr}
+                      <p className="mt-2 text-2xl font-bold">
+                        {clinicName || (language === "ar" ? "العيادة المختصة" : "Specialized clinic")}
                       </p>
+                      {clinicSecondaryName && (
+                        <p className="mt-1 text-sm font-medium text-foreground/75">{clinicSecondaryName}</p>
+                      )}
+                      {clinicReason && (
+                        <p className="mt-4 text-sm font-medium leading-6 text-foreground/80">
+                          {clinicReason}
+                        </p>
+                      )}
                     </div>
                   </div>
+
                   <Button
-                    className="bg-primary hover:bg-primary/90"
-                    onClick={() => setLocation(`/clinic/${diagnosisResult.suggestedClinic.id}`)}
+                    className="mt-6 w-full bg-primary hover:bg-primary/90"
+                    onClick={() => setLocation(buildBookingUrl(diagnosisResult.suggestedClinic, language))}
                     data-testid="button-book-at-clinic"
                   >
-                    <Calendar className="w-4 h-4 mr-2" />
+                    <Calendar className="h-4 w-4 me-2" />
                     {t.bookAtClinic}
                   </Button>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <CardContent className="space-y-6 p-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-primary">
+                  <MessageSquare className="h-5 w-5" />
+                  <h3 className="text-lg font-semibold">
+                    {language === "ar" ? "شرح الحالة" : "Condition Explanation"}
+                  </h3>
+                </div>
+                <p className="max-w-4xl font-medium leading-7 text-foreground/75">
+                  {language === "ar"
+                    ? "شرح مختصر للحالة الأساسية والمؤشرات المرتبطة بها."
+                    : "A short explanation of the main condition and its related indicators."}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-900/60">
+                <p className="text-sm font-medium leading-6 text-foreground/85">
+                  {patientExplanation}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <h3 className="text-lg font-semibold">
+                    {language === "ar" ? "مؤشرات التحليل" : "Assessment Indicators"}
+                  </h3>
+                </div>
+                <ul className="grid gap-3 md:grid-cols-2">
+                  {supportingFindings.map((finding, idx) => (
+                    <li key={idx} className="flex items-start gap-2 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60">
+                      <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                      <span className="text-sm font-medium leading-6 text-foreground/85">{finding}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">
+                    {language === "ar" ? "الإجراء الموصى به" : "Recommended Action"}
+                  </h3>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-900/60">
+                  <p className="text-sm font-medium leading-6 text-foreground/85">
+                    {recommendedAction}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {(generatedOtherFindings.length > 0 || additionalConditions.length > 0) && (
+            <Card className="border-0 bg-muted/25 shadow-none">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Stethoscope className="h-5 w-5 text-primary" />
+                  {language === "ar" ? "مشكلات إضافية ظهرت في التحليل" : "Additional Findings from the Analysis"}
+                </CardTitle>
+                <CardDescription className="font-medium text-foreground/70">
+                  {language === "ar"
+                    ? "نتائج ثانوية ظهرت بجانب النتيجة الأساسية."
+                    : "Secondary findings that appeared alongside the main result."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {generatedOtherFindings.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {generatedOtherFindings.map((finding) => (
+                        <div
+                          key={finding.condition}
+                          className="rounded-xl border border-border/70 bg-background p-4"
+                        >
+                          <h4 className="font-semibold">{finding.condition}</h4>
+                          {finding.explanation && (
+                            <p className="mt-2 text-sm font-medium leading-6 text-foreground/80">
+                              {finding.explanation}
+                            </p>
+                          )}
+                          {finding.relationToCase && (
+                            <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm font-medium leading-6 text-foreground/80 dark:bg-slate-900/60">
+                              <span className="font-medium text-foreground">
+                                {language === "ar" ? "ارتباطها بالحالة: " : "Relation to this case: "}
+                              </span>
+                              {finding.relationToCase}
+                            </div>
+                          )}
+                          {finding.recommendedAction && (
+                            <p className="mt-3 text-sm font-medium leading-6 text-foreground/80">
+                              <span className="font-medium text-foreground">
+                                {language === "ar" ? "الخطوة المناسبة: " : "Recommended action: "}
+                              </span>
+                              {finding.recommendedAction}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {additionalConditions.map((condition) => {
+                      const explanation = getPatientExplanation(condition, language);
+                      return (
+                        <div
+                          key={getConditionIdentity(condition)}
+                          className="rounded-xl border border-border/70 bg-background p-4"
+                        >
+                          <h4 className="font-semibold">{getConditionName(condition, language)}</h4>
+                          <p className="mt-2 text-sm font-medium leading-6 text-foreground/80">
+                            {explanation.meaning}
+                          </p>
+                          <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm font-medium leading-6 text-foreground/80 dark:bg-slate-900/60">
+                            <span className="font-medium text-foreground">
+                              {language === "ar" ? "سبب محتمل: " : "Possible reason: "}
+                            </span>
+                            {explanation.evidence}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.confidence}</p>
-                  <p className="text-2xl font-bold">{diagnosisResult.confidence}%</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">وقت العلاج المتوقع</p>
-                  <p className="text-xl font-bold">{diagnosisResult.estimatedTreatmentTime}</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">{t.disclaimer}</p>
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+              <div className="space-y-1 text-sm leading-6 text-amber-900 dark:text-amber-100">
+                <p className="font-semibold">
+                  {language === "ar" ? "تنبيه طبي" : "Medical Notice"}
+                </p>
+                <p>
+                  {language === "ar"
+                    ? "هذا تقييم أولي مدعوم بالذكاء الاصطناعي ولا يُعد تشخيصًا نهائيًا. يجب مراجعة الطبيب المختص لتأكيد الحالة."
+                    : "This is an AI-assisted preliminary assessment and does not replace a final clinical diagnosis. A qualified doctor must review and confirm the case."}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button className="flex-1" data-testid="button-book-appointment">
-              <Calendar className="w-4 w-4 mr-2" />
-              {t.bookAppointment}
-            </Button>
+          <div className="flex flex-wrap justify-start gap-3">
             <Button variant="outline" onClick={handleDownloadPDF} data-testid="button-download-report">
-              <Download className="w-4 h-4 mr-2" />
+              <Download className="w-4 h-4 me-2" />
               {t.downloadReport}
             </Button>
             <Button variant="outline" data-testid="button-share-result">
-              <Share2 className="w-4 h-4 mr-2" />
+              <Share2 className="w-4 h-4 me-2" />
               {t.shareResult}
             </Button>
             <Button variant="outline" onClick={handlePrint} data-testid="button-print-result">
-              <Printer className="w-4 h-4 mr-2" />
+              <Printer className="w-4 h-4 me-2" />
               {t.printResult}
             </Button>
           </div>
@@ -1210,7 +1869,8 @@ ${'='.repeat(50)}
             {t.startOver}
           </Button>
         </motion.div>
-      ) : (
+        );
+      })() : (
         <div className="text-center py-12 text-muted-foreground">
           <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
           <p>أجب على الأسئلة وارفع صورة الأشعة للحصول على التشخيص</p>
@@ -1230,7 +1890,7 @@ ${'='.repeat(50)}
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <Badge className="bg-gradient-to-r from-primary to-blue-600 text-white px-4 py-2">
-          <Zap className="w-4 h-4 mr-2" />
+          <Zap className="w-4 h-4 me-2" />
           AI Powered
         </Badge>
       </div>
@@ -1265,7 +1925,7 @@ ${'='.repeat(50)}
                   disabled={currentStep === 0}
                   data-testid="button-previous"
                 >
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <ArrowRight className="w-4 h-4 ms-2" />
                   {t.previous}
                 </Button>
 
@@ -1276,7 +1936,7 @@ ${'='.repeat(50)}
                     data-testid="button-next"
                   >
                     {t.next}
-                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    <ArrowLeft className="w-4 h-4 me-2" />
                   </Button>
                 ) : (
                   <Button
@@ -1285,7 +1945,7 @@ ${'='.repeat(50)}
                     data-testid="button-go-to-xray"
                   >
                     {t.uploadXray}
-                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    <ArrowLeft className="w-4 h-4 me-2" />
                   </Button>
                 )}
               </div>
@@ -1300,7 +1960,7 @@ ${'='.repeat(50)}
                   onClick={() => setActiveTab("questions")}
                   data-testid="button-back-to-questions"
                 >
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <ArrowRight className="w-4 h-4 ms-2" />
                   {t.previous}
                 </Button>
 
@@ -1310,7 +1970,7 @@ ${'='.repeat(50)}
                   className="bg-gradient-to-r from-primary to-blue-600"
                   data-testid="button-analyze"
                 >
-                  <Brain className="w-4 h-4 mr-2" />
+                  <Brain className="w-4 h-4 me-2" />
                   {t.analyze}
                 </Button>
               </div>

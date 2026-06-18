@@ -6,11 +6,9 @@
 import { InternalAxiosRequestConfig } from "axios";
 
 export const setupRequestInterceptor = (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-  // Add authentication token
-  const token = localStorage.getItem("authToken");
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  // NOTE: Authentication is handled via the session cookie (connect.sid).
+  // withCredentials: true on the Axios instance ensures the cookie is sent automatically.
+  // There is no JWT / Bearer token in this application.
 
   // Add request ID for tracking
   if (config.headers) {
@@ -33,6 +31,7 @@ export const setupRequestInterceptor = (config: InternalAxiosRequestConfig): Int
 
   return config;
 };
+
 
 /**
  * Generate unique request ID for tracking

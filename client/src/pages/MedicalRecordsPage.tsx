@@ -283,24 +283,64 @@ export default function MedicalRecordsPage() {
         setLoading(true);
         setError(null);
 
-        // Fetch patient data
+        // Fetch patient data from API
         const patientRes = await apiGet<PatientData>(`/patients/user/${userId}`);
         if (patientRes.success && patientRes.data) {
-          setPatientData(patientRes.data);
+          const pData = patientRes.data;
+          setPatientData(pData);
+          const patientId = pData._id || (pData as any).id;
+          
+          if (patientId) {
+            const [recordsRes, medsRes] = await Promise.all([
+              apiGet<any[]>(`/patients/${patientId}/medical-records`),
+              apiGet<any[]>(`/patients/${patientId}/medications`)
+            ]);
+
+            if (recordsRes.success && recordsRes.data) {
+              setRecords(recordsRes.data.map(r => ({
+                id: r.id || r._id,
+                type: r.diagnosis || "سجل طبي",
+                typeEn: "Medical Record",
+                date: r.date ? new Date(r.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                doctor: r.doctorName || "طبيب",
+                doctorEn: "Doctor",
+                clinic: "عيادة الأسنان",
+                clinicEn: "Dental Clinic",
+                description: r.chiefComplaint || "",
+                descriptionEn: r.chiefComplaint || "",
+                findings: r.treatmentProvided || "",
+                findingsEn: r.treatmentProvided || "",
+                recommendations: r.notes || r.nextStep || "",
+                recommendationsEn: r.notes || r.nextStep || "",
+                status: "normal"
+              })));
+            } else {
+              setRecords([]);
+            }
+
+            if (medsRes.success && medsRes.data) {
+              setMedications(medsRes.data.map(m => ({
+                id: m.id || m._id,
+                name: m.name,
+                nameEn: m.name,
+                dosage: m.dosage,
+                frequency: m.frequency,
+                frequencyEn: m.frequency,
+                startDate: m.startDate ? new Date(m.startDate).toISOString().split('T')[0] : "",
+                endDate: m.endDate ? new Date(m.endDate).toISOString().split('T')[0] : undefined,
+                prescribedBy: "طبيب الأسنان",
+                purpose: m.instructions || "",
+                purposeEn: m.instructions || ""
+              })));
+            } else {
+              setMedications([]);
+            }
+            
+            setFollowUpAlerts([]);
+          }
         }
 
-        // Fetch medical records (from reports and visit sessions)
-        // For now, we'll use a placeholder since the exact endpoint structure may vary
-        // You can expand this to fetch from multiple endpoints and combine them
-
-        // Example: Fetch reports if endpoint exists
-        // const reportsRes = await apiGet<any[]>(`/reports/patient/${patientId}`);
-
-        // Placeholder data transformation would go here
-        // For demo purposes, keeping empty arrays which will show empty states
-
       } catch (err: any) {
-        console.error("Error fetching medical records:", err);
         setError(err.message || "Failed to load data");
       } finally {
         setLoading(false);

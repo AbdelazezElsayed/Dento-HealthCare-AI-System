@@ -8,6 +8,25 @@ import API_CONFIG from "./config";
 import { setupInterceptors } from "./interceptors/setup";
 import { ApiError, ApiResponse } from "./types/api.types";
 
+// ─── CSRF Token Cache ──────────────────────────────────────────────────────
+// FIX (H7): Fetch a CSRF double-submit token on first mutating request and
+// inject it as x-csrf-token. Token is cached for the lifetime of the page.
+let csrfToken: string | null = null;
+
+async function getCsrfToken(): Promise<string | null> {
+  if (csrfToken) return csrfToken;
+  try {
+    const res = await axios.get("/api/v1/csrf-token", { withCredentials: true });
+    csrfToken = res.data?.token ?? null;
+  } catch {
+    // Non-fatal: dev environments may not enforce CSRF
+    csrfToken = null;
+  }
+  return csrfToken;
+}
+
+const MUTATING_METHODS = new Set(["post", "put", "patch", "delete"]);
+
 /**
  * Create and configure Axios instance
  */
@@ -16,13 +35,48 @@ const createApiClient = (): AxiosInstance => {
     baseURL: API_CONFIG.BASE_URL,
     timeout: API_CONFIG.TIMEOUT,
     headers: API_CONFIG.HEADERS,
+    // SECURITY FIX (C6): must be true so the browser sends the session
+    // cookie (connect.sid) with every Axios request. Without this, all
+    // protected API calls return 401 because the server never sees the session.
+    withCredentials: true,
   });
+
+  // FIX (H7): Inject CSRF token on mutating requests
+  instance.interceptors.request.use(async (config) => {
+    if (config.method && MUTATING_METHODS.has(config.method.toLowerCase())) {
+      const token = await getCsrfToken();
+      if (token) {
+        config.headers["x-csrf-token"] = token;
+      }
+    }
+    return config;
+  });
+
+  // If we get a 403 with CSRF error, clear the cached token and retry once
+  instance.interceptors.response.use(
+    (response) => response,
+    async (error: AxiosError) => {
+      const is403 = error.response?.status === 403;
+      const isCsrfError = (error.response?.data as any)?.code === "INVALID_CSRF_TOKEN";
+      if (is403 && isCsrfError && error.config && !(error.config as any)._csrfRetried) {
+        csrfToken = null; // force refresh
+        (error.config as any)._csrfRetried = true;
+        const newToken = await getCsrfToken();
+        if (newToken && error.config.headers) {
+          error.config.headers["x-csrf-token"] = newToken;
+        }
+        return instance.request(error.config);
+      }
+      return Promise.reject(error);
+    }
+  );
 
   // Setup request and response interceptors
   setupInterceptors(instance);
 
   return instance;
 };
+
 
 /**
  * API Client instance

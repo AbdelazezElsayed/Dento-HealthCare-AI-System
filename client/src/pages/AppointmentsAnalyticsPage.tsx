@@ -16,9 +16,9 @@ const statusData = [
 ];
 
 const clinicData = [
-  { clinic: "التشخيص", appointments: 120 },
-  { clinic: "العلاج", appointments: 95 },
-  { clinic: "الجراحة", appointments: 75 },
+  { clinic: "التشخيص واللثة", appointments: 120 },
+  { clinic: "العلاج التحفظي", appointments: 95 },
+  { clinic: "جراحة الفم", appointments: 75 },
   { clinic: "التركيبات", appointments: 65 },
   { clinic: "تقويم", appointments: 45 },
 ];

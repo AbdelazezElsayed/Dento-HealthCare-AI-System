@@ -16,6 +16,7 @@ interface Procedure {
     description: string;
     status: "scheduled" | "in-progress" | "completed";
     scheduledDate: string;
+    scheduledTime?: string;
 }
 
 interface Appointment {
@@ -86,7 +87,7 @@ export function EditTreatmentPlanDialog({
             ...formData,
             procedures: [
                 ...formData.procedures,
-                { name: "", description: "", status: "scheduled", scheduledDate: "" }
+                { name: "", description: "", status: "scheduled", scheduledDate: "", scheduledTime: "" }
             ]
         });
     };
@@ -165,6 +166,7 @@ export function EditTreatmentPlanDialog({
         procedureDesc: language === "ar" ? "وصف الإجراء" : "Procedure Description",
         status: language === "ar" ? "الحالة" : "Status",
         scheduledDate: language === "ar" ? "تاريخ الموعد" : "Scheduled Date",
+        scheduledTime: language === "ar" ? "وقت الموعد" : "Scheduled Time",
         scheduled: language === "ar" ? "مجدول" : "Scheduled",
         inProgress: language === "ar" ? "قيد التنفيذ" : "In Progress",
         completed: language === "ar" ? "مكتمل" : "Completed",
@@ -293,11 +295,18 @@ export function EditTreatmentPlanDialog({
                                             </div>
                                             <div>
                                                 <Label>{t.scheduledDate}</Label>
-                                                <Input
-                                                    type="date"
-                                                    value={proc.scheduledDate}
-                                                    onChange={(e) => handleProcedureChange(idx, "scheduledDate", e.target.value)}
-                                                />
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        type="date"
+                                                        value={proc.scheduledDate}
+                                                        onChange={(e) => handleProcedureChange(idx, "scheduledDate", e.target.value)}
+                                                    />
+                                                    <Input
+                                                        type="time"
+                                                        value={proc.scheduledTime || ""}
+                                                        onChange={(e) => handleProcedureChange(idx, "scheduledTime", e.target.value)}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </CardContent>

@@ -1,9 +1,21 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, Upload, Bot, User, Loader2, Sparkles, Zap } from "lucide-react";
+import {
+    Send,
+    Upload,
+    Bot,
+    User,
+    Loader2,
+    Sparkles,
+    Zap,
+    Mic,
+    MicOff,
+    Volume2,
+    VolumeX,
+} from "lucide-react";
 import { motion } from "framer-motion";
 
 type Message = {
@@ -21,6 +33,14 @@ type ChatbotCoreProps = {
     quickSymptoms?: Array<{ label: string; emoji: string }>;
     className?: string;
 };
+
+// Extend Window interface for WebkitSpeechRecognition
+declare global {
+    interface Window {
+        webkitSpeechRecognition: any;
+        SpeechRecognition: any;
+    }
+}
 
 export default function ChatbotCore({
     language = "ar",
@@ -51,11 +71,143 @@ export default function ChatbotCore({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Voice states
+    const [isListening, setIsListening] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const recognitionRef = useRef<any>(null);
+    const synthRef = useRef<SpeechSynthesis | null>(null);
+    const transcriptRef = useRef<string>(""); // avoids stale closure in onend
+
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    // Initialize Speech Recognition and Synthesis
+    useEffect(() => {
+        if ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) {
+            const SpeechRecognition =
+                window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognitionRef.current = new SpeechRecognition();
+            recognitionRef.current.continuous = false;
+            recognitionRef.current.interimResults = false;
+            recognitionRef.current.lang = language === "ar" ? "ar-SA" : "en-US";
+
+            recognitionRef.current.onstart = () => {
+                setIsListening(true);
+                console.log("Speech recognition started");
+            };
+
+            recognitionRef.current.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                transcriptRef.current = transcript;
+                setInputMessage(transcript);
+            };
+
+            recognitionRef.current.onerror = (event: any) => {
+                console.error("Speech recognition error:", event.error);
+                setIsListening(false);
+                transcriptRef.current = "";
+            };
+
+            recognitionRef.current.onend = () => {
+                setIsListening(false);
+                const final = transcriptRef.current.trim();
+                transcriptRef.current = "";
+                if (final) {
+                    handleSendMessage(final);
+                }
+            };
+        } else {
+            console.warn("Speech Recognition API not supported in this browser.");
+        }
+
+        if ("speechSynthesis" in window) {
+            synthRef.current = window.speechSynthesis;
+        } else {
+            console.warn("Speech Synthesis API not supported in this browser.");
+        }
+
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
+            if (synthRef.current) {
+                synthRef.current.cancel();
+            }
+        };
+    }, [language]); // Only re-init when language changes; transcript is tracked via ref
+
+    const speakMessage = useCallback(
+        (content: string) => {
+            if (isMuted || !synthRef.current || !content) return;
+
+            synthRef.current.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(content);
+            utterance.lang = language === "ar" ? "ar-SA" : "en-US";
+
+            // Improved voice selection — tries multiple Arabic locales
+            const voices = synthRef.current.getVoices();
+            let selectedVoice: SpeechSynthesisVoice | undefined;
+            if (language === "ar") {
+                const arLocales = ["ar-SA", "ar-EG", "ar-001"];
+                // First try Google voices
+                selectedVoice = arLocales
+                    .map(loc => voices.find(v => v.lang === loc && v.name.toLowerCase().includes("google")))
+                    .find(Boolean);
+                // Then any voice for those locales
+                if (!selectedVoice) {
+                    selectedVoice = arLocales
+                        .map(loc => voices.find(v => v.lang === loc))
+                        .find(Boolean);
+                }
+                // Fallback: any Arabic voice
+                if (!selectedVoice) {
+                    selectedVoice = voices.find(v => v.lang.startsWith("ar"));
+                }
+            } else {
+                selectedVoice =
+                    voices.find(v => v.lang === "en-US" && v.name.toLowerCase().includes("google")) ??
+                    voices.find(v => v.lang === "en-US") ??
+                    voices.find(v => v.lang.startsWith("en"));
+            }
+            if (selectedVoice) utterance.voice = selectedVoice;
+
+            utterance.onstart = () => setIsSpeaking(true);
+            utterance.onend = () => setIsSpeaking(false);
+            utterance.onerror = () => setIsSpeaking(false);
+
+            synthRef.current.speak(utterance);
+        },
+        [language, isMuted]
+    );
+
+    const handleListen = () => {
+        if (!recognitionRef.current) {
+            alert(
+                language === "ar"
+                    ? "عذراً، ميزة التعرف على الكلام غير مدعومة في متصفحك."
+                    : "Sorry, speech recognition is not supported in your browser."
+            );
+            return;
+        }
+
+        // ── Fix: always stop TTS before activating mic ──
+        if (synthRef.current) {
+            synthRef.current.cancel();
+            setIsSpeaking(false);
+        }
+
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else {
+            setInputMessage("");
+            recognitionRef.current.start();
+        }
+    };
 
     const handleSendMessage = async (messageText?: string) => {
         const textToSend = messageText || inputMessage;
@@ -109,18 +261,21 @@ export default function ChatbotCore({
             };
 
             setMessages((prev) => [...prev, botMessage]);
+            speakMessage(data.message); // Speak the bot's response
         } catch (error) {
             console.error("Chat error (full):", error);
+            const errorMessageContent =
+                language === "ar"
+                    ? `عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.\n\nتفاصيل الخطأ: ${error instanceof Error ? error.message : String(error)}`
+                    : `Sorry, an error occurred. Please try again.\n\nError details: ${error instanceof Error ? error.message : String(error)}`;
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: "bot",
-                content:
-                    language === "ar"
-                        ? `عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.\n\nتفاصيل الخطأ: ${error instanceof Error ? error.message : String(error)}`
-                        : `Sorry, an error occurred. Please try again.\n\nError details: ${error instanceof Error ? error.message : String(error)}`,
+                content: errorMessageContent,
                 timestamp: new Date(),
             };
             setMessages((prev) => [...prev, errorMessage]);
+            speakMessage(errorMessageContent); // Speak the error message
         } finally {
             setIsLoading(false);
         }
@@ -189,18 +344,21 @@ export default function ChatbotCore({
                 };
 
                 setMessages((prev) => [...prev, botMessage]);
+                speakMessage(data.message); // Speak the bot's response
             } catch (error) {
                 console.error("Image analysis error:", error);
+                const errorMessageContent =
+                    language === "ar"
+                        ? "عذراً، حدث خطأ في تحليل الصورة."
+                        : "Sorry, an error occurred while analyzing the image.";
                 const errorMessage: Message = {
                     id: (Date.now() + 1).toString(),
                     role: "bot",
-                    content:
-                        language === "ar"
-                            ? "عذراً، حدث خطأ في تحليل الصورة."
-                            : "Sorry, an error occurred while analyzing the image.",
+                    content: errorMessageContent,
                     timestamp: new Date(),
                 };
                 setMessages((prev) => [...prev, errorMessage]);
+                speakMessage(errorMessageContent); // Speak the error message
             } finally {
                 setIsLoading(false);
             }
@@ -223,13 +381,22 @@ export default function ChatbotCore({
                         >
                             {message.role === "bot" && (
                                 <motion.div
-                                    className="flex-shrink-0"
+                                    className="flex-shrink-0 relative"
                                     whileHover={{ scale: 1.1, rotate: 5 }}
                                     transition={{ duration: 0.2 }}
                                 >
                                     <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full shadow-lg">
                                         <Bot className="w-5 h-5 text-white" />
                                     </div>
+                                    {isSpeaking && (
+                                        <motion.div
+                                            className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center"
+                                            animate={{ scale: [1, 1.2, 1] }}
+                                            transition={{ duration: 0.8, repeat: Infinity }}
+                                        >
+                                            <span className="sr-only">Bot is speaking</span>
+                                        </motion.div>
+                                    )}
                                 </motion.div>
                             )}
 
@@ -382,31 +549,69 @@ export default function ChatbotCore({
                                 variant="outline"
                                 size="icon"
                                 onClick={() => fileInputRef.current?.click()}
-                                disabled={isLoading}
+                                disabled={isLoading || isListening}
                                 data-testid="button-upload-image"
                                 className="h-12 w-12 rounded-full border-2 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 hover:from-purple-500 hover:to-pink-500 hover:text-white transition-all duration-300 shadow-md hover:shadow-lg"
                             >
                                 <Upload className="h-5 w-5" />
                             </Button>
                         </motion.div>
+
+                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setIsMuted(!isMuted)}
+                                disabled={isLoading || isListening}
+                                data-testid="button-toggle-mute"
+                                className="h-12 w-12 rounded-full border-2 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 hover:from-yellow-500 hover:to-orange-500 hover:text-white transition-all duration-300 shadow-md hover:shadow-lg"
+                            >
+                                {isMuted ? (
+                                    <VolumeX className="h-5 w-5" />
+                                ) : (
+                                    <Volume2 className="h-5 w-5" />
+                                )}
+                            </Button>
+                        </motion.div>
+
                         <div className="flex-1 relative">
                             <Input
                                 placeholder={language === "ar" ? "اكتب رسالتك..." : "Type your message..."}
                                 value={inputMessage}
                                 onChange={(e) => setInputMessage(e.target.value)}
-                                onKeyPress={(e) => e.key === "Enter" && !isLoading && handleSendMessage()}
-                                disabled={isLoading}
+                                onKeyPress={(e) => e.key === "Enter" && !isLoading && !isListening && handleSendMessage()}
+                                disabled={isLoading || isListening}
                                 data-testid="input-chatbot-message"
                                 className="h-14 px-6 text-base rounded-2xl border-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 shadow-sm transition-all duration-300"
                             />
                         </div>
+
+                        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                            <Button
+                                onClick={handleListen}
+                                disabled={isLoading}
+                                size="icon"
+                                data-testid="button-toggle-mic"
+                                className={`h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${isListening
+                                    ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                                    : "bg-gradient-to-r from-green-500 to-lime-500 hover:from-green-600 hover:to-lime-600 text-white"
+                                    }`}
+                            >
+                                {isListening ? (
+                                    <MicOff className="h-6 w-6" />
+                                ) : (
+                                    <Mic className="h-6 w-6" />
+                                )}
+                            </Button>
+                        </motion.div>
+
                         <motion.div
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                         >
                             <Button
                                 onClick={() => handleSendMessage()}
-                                disabled={isLoading || !inputMessage.trim()}
+                                disabled={isLoading || !inputMessage.trim() || isListening}
                                 size="icon"
                                 data-testid="button-send-message"
                                 className="h-14 w-14 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"

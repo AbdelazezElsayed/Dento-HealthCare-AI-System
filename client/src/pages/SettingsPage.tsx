@@ -7,6 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import {
   Camera, Mail, Phone, User, Clock, Bell, Lock, Shield, HelpCircle, LogOut, Edit2, Check, X,
@@ -21,6 +30,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import LogoutConfirmDialog from "@/components/common/LogoutConfirmDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserProfile {
   name: string;
@@ -44,6 +54,7 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ customPages: propCustomPages, setCustomPages: setPropCustomPages }: SettingsPageProps) {
+  const { toast } = useToast();
   const [profile, setProfile] = useState<UserProfile>({
     name: "أحمد محمد علي",
     email: "ahmed.ali@example.com",
@@ -56,6 +67,13 @@ export default function SettingsPage({ customPages: propCustomPages, setCustomPa
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(profile);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 2️⃣1️⃣ تحسينات الواجهة
@@ -165,6 +183,54 @@ export default function SettingsPage({ customPages: propCustomPages, setCustomPa
   const handleUpdateCustomPages = (pages: CustomPage[]) => {
     setCustomPages(pages);
     setPropCustomPages?.(pages);
+  };
+
+  const resetPasswordForm = () => {
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  };
+
+  const handleChangePassword = async () => {
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast({
+        title: "كلمتا المرور غير متطابقتين",
+        description: "يرجى تأكيد كلمة المرور الجديدة بشكل صحيح",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const response = await fetch('/api/auth/password', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.errors?.[0]?.message || data.message || data.messageEn || "تعذر تغيير كلمة المرور");
+      }
+
+      toast({
+        title: "تم تغيير كلمة المرور بنجاح",
+        description: "يمكنك استخدام كلمة المرور الجديدة في تسجيل الدخول القادم",
+      });
+      resetPasswordForm();
+      setShowPasswordDialog(false);
+    } catch (error: any) {
+      toast({
+        title: "تعذر تغيير كلمة المرور",
+        description: error.message || "حدث خطأ أثناء تغيير كلمة المرور",
+        variant: "destructive",
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   // بيانات الرسوم البيانية
@@ -1150,7 +1216,7 @@ export default function SettingsPage({ customPages: propCustomPages, setCustomPa
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Button variant="outline" className="w-full" data-testid="button-change-password">
+          <Button variant="outline" className="w-full" data-testid="button-change-password" onClick={() => setShowPasswordDialog(true)}>
             <Lock className="h-4 w-4 mr-2" />
             تغيير كلمة المرور
           </Button>
@@ -1160,6 +1226,60 @@ export default function SettingsPage({ customPages: propCustomPages, setCustomPa
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={showPasswordDialog} onOpenChange={(open) => {
+        setShowPasswordDialog(open);
+        if (!open) resetPasswordForm();
+      }}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تغيير كلمة المرور</DialogTitle>
+            <DialogDescription>
+              أدخل كلمة المرور الحالية ثم اختر كلمة مرور جديدة.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">كلمة المرور الحالية</Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                data-testid="input-current-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">كلمة المرور الجديدة</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                data-testid="input-new-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">تأكيد كلمة المرور الجديدة</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                data-testid="input-confirm-password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPasswordDialog(false)} disabled={isChangingPassword}>
+              إلغاء
+            </Button>
+            <Button onClick={handleChangePassword} disabled={isChangingPassword}>
+              {isChangingPassword ? "جارٍ الحفظ..." : "حفظ كلمة المرور"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Logout Confirmation Dialog */}
       <LogoutConfirmDialog

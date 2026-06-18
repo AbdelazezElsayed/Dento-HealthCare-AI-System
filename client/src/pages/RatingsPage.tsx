@@ -5,6 +5,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Star, Send } from "lucide-react";
+import { getClinicBySlug } from "@/constants/clinics";
+
+const clinicName = (slug: string) => getClinicBySlug(slug)?.nameAr || "";
 
 interface Rating {
   id: string;
@@ -22,7 +25,7 @@ export default function RatingsPage() {
     {
       id: "1",
       doctorName: "د. محمد أحمد",
-      clinic: "التشخيص والأشعة",
+      clinic: clinicName("oral-diagnosis-periodontology"),
       patientName: "أحمد علي",
       rating: 5,
       comment: "طبيب ممتاز جداً، شرح لي الحالة بشكل واضح جداً. الخدمة ممتازة والمركز نظيف ومرتب.",
@@ -40,7 +43,7 @@ export default function RatingsPage() {
     {
       id: "3",
       doctorName: "د. سارة حسن",
-      clinic: "تجميل الأسنان",
+      clinic: clinicName("cosmetic-dentistry"),
       patientName: "سارة حسن",
       rating: 5,
       comment: "الخدمة ممتازة جداً! نتائج التبييض رائعة وظهرت مباشرة. أنصح بشدة.",

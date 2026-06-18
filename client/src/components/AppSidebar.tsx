@@ -1,4 +1,4 @@
-import { Home, Hospital, Calendar, ChevronDown, SquareCode, Clock, Users, FileTextIcon, Star, Search, CreditCard, Wand2, Brain, ClipboardList, DollarSign, CalendarCheck, Settings } from "lucide-react";
+import { Home, Hospital, Calendar, SquareCode, Clock, Users, FileTextIcon, Star, Search, CreditCard, Wand2, Brain, ClipboardList, DollarSign, CalendarCheck, Settings, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -8,12 +8,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link, useLocation } from "wouter";
 
 interface AppSidebarProps {
@@ -27,19 +23,6 @@ interface AppSidebarProps {
 export default function AppSidebar({ customPages = [], userType = "patient", language = "ar" }: AppSidebarProps) {
   const [location] = useLocation();
   const activePage = location.substring(1) || "home";
-  const clinics = [
-    { id: "diagnosis", name: "التشخيص والأشعة", nameEn: "Diagnosis & Radiology" },
-    { id: "conservative", name: "العلاج التحفظي وطب وجراحة الجذور", nameEn: "Conservative & Endodontics" },
-    { id: "surgery", name: "جراحة الفم والفكين", nameEn: "Oral & Maxillofacial Surgery" },
-    { id: "removable", name: "التركيبات المتحركة", nameEn: "Removable Prosthodontics" },
-    { id: "fixed", name: "التركيبات الثابتة", nameEn: "Fixed Prosthodontics" },
-    { id: "gums", name: "اللثة", nameEn: "Periodontics" },
-    { id: "oral-surgery", name: "الجراحة", nameEn: "Surgery" },
-    { id: "cosmetic", name: "تجميل الأسنان", nameEn: "Cosmetic Dentistry" },
-    { id: "implants", name: "زراعة الأسنان", nameEn: "Dental Implants" },
-    { id: "orthodontics", name: "تقويم الأسنان", nameEn: "Orthodontics" },
-    { id: "pediatric", name: "أسنان الأطفال", nameEn: "Pediatric Dentistry" },
-  ];
 
   // handleClick removed - using Link components directly
 
@@ -47,13 +30,16 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
   const isDoctor = userType === "doctor";
   const isStudent = userType === "student";
   const isGraduate = userType === "graduate";
+  const isAdmin = userType === "admin";
   const isStaff = isDoctor || isStudent || isGraduate;
 
   const translations = {
     ar: {
+      adminPanel: "لوحة تحكم المسؤول",
       mainMenu: "القائمة الرئيسية",
       home: "الرئيسية",
       aiDiagnosis: "التشخيص الذكي",
+      diagnosisHistory: "سجل التشخيص الذكي",
       clinicDetails: "تفاصيل العيادات",
       treatmentPlans: "الخطة العلاجية للمريض",
       dentocad: "Dentocad",
@@ -74,9 +60,11 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
       university: "جامعة الدلتا للعلوم والتكنولوجيا",
     },
     en: {
+      adminPanel: "Admin Panel",
       mainMenu: "Main Menu",
       home: "Home",
       aiDiagnosis: "AI Diagnosis",
+      diagnosisHistory: "Diagnosis History",
       clinicDetails: "Clinic Details",
       treatmentPlans: "Treatment Plans",
       dentocad: "Dentocad",
@@ -101,7 +89,7 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
   const t = translations[language];
 
   return (
-    <Sidebar side="right" collapsible="offcanvas">
+    <Sidebar side={language === "ar" ? "right" : "left"} collapsible="offcanvas">
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary rounded-lg">
@@ -130,6 +118,23 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
+              {/* FIX (H6): Admin-only nav item. Previously AdminPanelPage had no route and no sidebar link. */}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={activePage === "admin-panel"}
+                    data-testid="nav-admin-panel"
+                    className="font-semibold bg-gradient-to-r from-red-500/10 to-orange-500/10 hover:from-red-500/20 hover:to-orange-500/20"
+                  >
+                    <Link href="/admin-panel">
+                      <Shield className="w-4 h-4 text-red-600" />
+                      <span>{t.adminPanel}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               {isStaff && (
                 <SidebarMenuItem>
@@ -191,34 +196,33 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <Collapsible defaultOpen className="group/collapsible">
+              {isPatient && (
                 <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton data-testid="nav-clinic-details">
-                      <Hospital className="w-4 h-4" />
-                      <span>{t.clinicDetails}</span>
-                      <ChevronDown className="mr-auto transition-transform group-data-[state=open]/collapsible:rotate-180 w-4 h-4" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {clinics.map((clinic) => (
-                        <SidebarMenuSubItem key={clinic.id}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={activePage === `clinic-${clinic.id}`}
-                            data-testid={`nav-clinic-${clinic.id}`}
-                          >
-                            <Link href={`/clinic/${clinic.id}`}>
-                              <span>{language === "ar" ? clinic.name : clinic.nameEn}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={activePage === "diagnosis-history"}
+                    data-testid="nav-diagnosis-history"
+                  >
+                    <Link href="/diagnosis-history">
+                      <ClipboardList className="w-4 h-4" />
+                      <span>{t.diagnosisHistory}</span>
+                    </Link>
+                  </SidebarMenuButton>
                 </SidebarMenuItem>
-              </Collapsible>
+              )}
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={activePage === "clinics" || activePage.startsWith("clinic/")}
+                  data-testid="nav-clinic-details"
+                >
+                  <Link href="/clinics">
+                    <Hospital className="w-4 h-4" />
+                    <span>{t.clinicDetails}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
 
               {isPatient && (
                 <SidebarMenuItem>
@@ -235,18 +239,20 @@ export default function AppSidebar({ customPages = [], userType = "patient", lan
                 </SidebarMenuItem>
               )}
 
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={activePage === "dentocad"}
-                  data-testid="nav-dentocad"
-                >
-                  <Link href="/dentocad">
-                    <SquareCode className="w-4 h-4" />
-                    <span>{t.dentocad}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {!isPatient && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={activePage === "dentocad"}
+                    data-testid="nav-dentocad"
+                  >
+                    <Link href="/dentocad">
+                      <SquareCode className="w-4 h-4" />
+                      <span>{t.dentocad}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
 
               {isPatient && (
                 <SidebarMenuItem>

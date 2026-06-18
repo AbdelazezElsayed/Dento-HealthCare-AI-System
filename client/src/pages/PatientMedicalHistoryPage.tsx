@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Download, Calendar, User, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
+import { getClinicBySlug } from "@/constants/clinics";
 
 interface MedicalRecord {
   id: string;
@@ -18,6 +18,8 @@ interface MedicalRecord {
   notes: string;
 }
 
+const clinicName = (slug: string, fallback: string) => getClinicBySlug(slug)?.nameAr || fallback;
+
 export default function PatientMedicalHistoryPage() {
   const [selectedPatient, setSelectedPatient] = useState("patient1");
   const [records] = useState<Record<string, MedicalRecord[]>>({
@@ -29,7 +31,7 @@ export default function PatientMedicalHistoryPage() {
         diagnosis: "تسوس في الضرس الأول",
         treatment: "حشو مركب",
         doctor: "د. أحمد محمد",
-        clinic: "العلاج التحفظي",
+        clinic: clinicName("conservative-dentistry", "العلاج التحفظي"),
         status: "مكتمل",
         notes: "حشو ناجح بدون مضاعفات",
       },
@@ -40,7 +42,7 @@ export default function PatientMedicalHistoryPage() {
         diagnosis: "فحص شامل",
         treatment: "تنظيف وفحص",
         doctor: "د. فاطمة علي",
-        clinic: "التشخيص والأشعة",
+        clinic: clinicName("oral-diagnosis-periodontology", "التشخيص وعلاج اللثة"),
         status: "مكتمل",
         notes: "حالة جيدة بشكل عام",
       },

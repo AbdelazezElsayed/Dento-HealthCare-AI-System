@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Send, Upload, Bot, User, X } from "lucide-react";
+import { getClinicBySlug } from "@/constants/clinics";
 
 interface Message {
   id: string;
@@ -19,6 +20,8 @@ interface PatientChatbotProps {
   onClose?: () => void;
   patientName?: string;
 }
+
+const clinicName = (slug: string) => getClinicBySlug(slug)?.nameAr || "";
 
 export default function PatientChatbot({ onClose, patientName = "المريض" }: PatientChatbotProps) {
   const [messages, setMessages] = useState<Message[]>([
@@ -45,53 +48,53 @@ export default function PatientChatbot({ onClose, patientName = "المريض" }
     
     if (lowerMessage.includes("ألم") || lowerMessage.includes("وجع") || lowerMessage.includes("تسوس")) {
       return {
-        clinic: "العلاج التحفظي وطب وجراحة الجذور",
-        response: "بناءً على الأعراض التي ذكرتها، أنصحك بزيارة عيادة العلاج التحفظي وطب وجراحة الجذور. سيقوم الطبيب بفحص الأسنان المصابة وتحديد العلاج المناسب.",
+        clinic: clinicName("conservative-dentistry"),
+        response: "بناءً على الأعراض التي ذكرتها، أنصحك بزيارة عيادة العلاج التحفظي. سيقوم الطبيب بفحص الأسنان المصابة وتحديد العلاج المناسب.",
       };
     } else if (lowerMessage.includes("لثة") || lowerMessage.includes("نزيف") || lowerMessage.includes("التهاب اللثة")) {
       return {
-        clinic: "اللثة",
-        response: "أعراضك تشير إلى مشكلة في اللثة. أنصحك بزيارة قسم اللثة لفحص الحالة والحصول على العلاج المناسب.",
+        clinic: clinicName("oral-diagnosis-periodontology"),
+        response: "أعراضك تشير إلى مشكلة في اللثة. أنصحك بزيارة عيادة التشخيص وعلاج اللثة لفحص الحالة والحصول على العلاج المناسب.",
       };
     } else if (lowerMessage.includes("تقويم") || lowerMessage.includes("اعوجاج") || lowerMessage.includes("ترتيب")) {
       return {
-        clinic: "تقويم الأسنان",
+        clinic: clinicName("orthodontics"),
         response: "بناءً على وصفك، يبدو أنك بحاجة لزيارة قسم تقويم الأسنان لتقييم الحالة ووضع خطة علاجية مناسبة.",
       };
     } else if (lowerMessage.includes("زراعة") || lowerMessage.includes("سن مفقود") || lowerMessage.includes("فقدت")) {
       return {
-        clinic: "زراعة الأسنان",
+        clinic: clinicName("implant-dentistry"),
         response: "أنصحك بزيارة قسم زراعة الأسنان لتقييم إمكانية الزراعة ووضع خطة العلاج.",
       };
     } else if (lowerMessage.includes("تجميل") || lowerMessage.includes("تبييض") || lowerMessage.includes("ابتسامة")) {
       return {
-        clinic: "تجميل الأسنان",
+        clinic: clinicName("cosmetic-dentistry"),
         response: "يمكنك زيارة قسم تجميل الأسنان للحصول على استشارة حول تحسين مظهر أسنانك.",
       };
     } else if (lowerMessage.includes("طفل") || lowerMessage.includes("ابني") || lowerMessage.includes("ابنتي")) {
       return {
-        clinic: "أسنان الأطفال",
-        response: "أنصحك بزيارة قسم أسنان الأطفال المتخصص في علاج ورعاية أسنان الأطفال.",
+        clinic: clinicName("pediatric-special-care-dentistry"),
+        response: "أنصحك بزيارة عيادة أسنان الأطفال والاحتياجات الخاصة المتخصصة في علاج ورعاية أسنان الأطفال.",
       };
     } else if (lowerMessage.includes("خلع") || lowerMessage.includes("جراحة") || lowerMessage.includes("ضرس العقل")) {
       return {
-        clinic: "الجراحة",
-        response: "حالتك تتطلب زيارة قسم الجراحة للتقييم والإجراء الجراحي المناسب.",
+        clinic: clinicName("oral-surgery"),
+        response: "حالتك تتطلب زيارة عيادة جراحة الفم للتقييم والإجراء الجراحي المناسب.",
       };
     } else if (lowerMessage.includes("أشعة") || lowerMessage.includes("فحص") || lowerMessage.includes("تشخيص")) {
       return {
-        clinic: "التشخيص والأشعة",
-        response: "أنصحك بزيارة قسم التشخيص والأشعة للحصول على فحص شامل وتحديد الحالة بدقة.",
+        clinic: clinicName("oral-diagnosis-periodontology"),
+        response: "أنصحك بزيارة عيادة التشخيص وعلاج اللثة للحصول على فحص شامل وتحديد الحالة بدقة.",
       };
     } else if (lowerMessage.includes("تركيبة") || lowerMessage.includes("طقم")) {
       return {
-        clinic: "التركيبات المتحركة",
+        clinic: clinicName("removable-prosthodontics"),
         response: "يمكنك زيارة قسم التركيبات المتحركة لتقييم حالتك والحصول على تركيبة مناسبة.",
       };
     } else {
       return {
-        clinic: "التشخيص والأشعة",
-        response: "لتحديد حالتك بدقة، أنصحك بزيارة قسم التشخيص والأشعة للحصول على فحص شامل أولاً.",
+        clinic: clinicName("oral-diagnosis-periodontology"),
+        response: "لتحديد حالتك بدقة، أنصحك بزيارة عيادة التشخيص وعلاج اللثة للحصول على فحص شامل أولاً.",
       };
     }
   };
@@ -149,8 +152,8 @@ export default function PatientChatbot({ onClose, patientName = "المريض" }
         const botMessage: Message = {
           id: (Date.now() + 1).toString(),
           type: "bot",
-          content: "شكراً لرفع الصورة. بناءً على الفحص الأولي للصورة، أنصحك بزيارة قسم التشخيص والأشعة للحصول على تقييم دقيق من قبل الطبيب المختص. يمكن للطبيب إجراء فحص شامل وتحديد العلاج المناسب.",
-          suggestedClinic: "التشخيص والأشعة",
+          content: "شكراً لرفع الصورة. بناءً على الفحص الأولي للصورة، أنصحك بزيارة عيادة التشخيص وعلاج اللثة للحصول على تقييم دقيق من قبل الطبيب المختص. يمكن للطبيب إجراء فحص شامل وتحديد العلاج المناسب.",
+          suggestedClinic: clinicName("oral-diagnosis-periodontology"),
           timestamp: new Date(),
         };
 

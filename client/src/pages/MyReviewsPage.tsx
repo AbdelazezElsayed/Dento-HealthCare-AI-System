@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Star, MessageCircle, Edit, Trash2, ThumbsUp } from "lucide-react";
 import { motion } from "framer-motion";
+import { getClinicBySlug } from "@/constants/clinics";
+
+const clinicName = (slug: string) => getClinicBySlug(slug)?.nameAr || "";
 
 interface Review {
   id: string;
@@ -22,7 +25,7 @@ export default function MyReviewsPage() {
     {
       id: "1",
       doctor: "د. أحمد محمد",
-      clinic: "التشخيص والأشعة",
+      clinic: clinicName("oral-diagnosis-periodontology"),
       rating: 5,
       title: "تجربة ممتازة جداً",
       content:

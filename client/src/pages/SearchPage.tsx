@@ -5,6 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, User, Hospital, FileText, Star } from "lucide-react";
+import { CLINICS, getClinicBySlug } from "@/constants/clinics";
+
+const clinicName = (slug: string) => getClinicBySlug(slug)?.nameAr || "";
 
 export default function SearchPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -22,17 +25,18 @@ export default function SearchPage() {
   };
 
   const doctors = [
-    { id: "1", name: "د. محمد أحمد", specialization: "تشخيص وأشعة", clinic: "التشخيص والأشعة", rating: 4.8, symptoms: ["ألم", "تقويم", "تسوس"] },
-    { id: "2", name: "د. فاطمة علي", specialization: "علاج تحفظي", clinic: "العلاج التحفظي", rating: 4.9, symptoms: ["تسوس", "لثة", "ألم"] },
-    { id: "3", name: "د. سارة حسن", specialization: "تجميل وتبييض", clinic: "تجميل الأسنان", rating: 4.7, symptoms: ["تبييض"] },
-    { id: "4", name: "د. علي محمود", specialization: "جراحة", clinic: "جراحة الفم والفكين", rating: 4.6, symptoms: ["زراعة", "خلع"] },
+    { id: "1", name: "د. محمد أحمد", specialization: "تشخيص وعلاج لثة", clinic: clinicName("oral-diagnosis-periodontology"), rating: 4.8, symptoms: ["ألم", "تقويم", "تسوس"] },
+    { id: "2", name: "د. فاطمة علي", specialization: "علاج تحفظي", clinic: clinicName("conservative-dentistry"), rating: 4.9, symptoms: ["تسوس", "لثة", "ألم"] },
+    { id: "3", name: "د. سارة حسن", specialization: "تجميل وتبييض", clinic: clinicName("cosmetic-dentistry"), rating: 4.7, symptoms: ["تبييض"] },
+    { id: "4", name: "د. علي محمود", specialization: "جراحة", clinic: clinicName("oral-maxillofacial-surgery"), rating: 4.6, symptoms: ["زراعة", "خلع"] },
   ];
 
-  const clinics = [
-    { id: "1", name: "التشخيص والأشعة", doctors: 5, patients: 1200 },
-    { id: "2", name: "العلاج التحفظي", doctors: 4, patients: 980 },
-    { id: "3", name: "تجميل الأسنان", doctors: 3, patients: 650 },
-  ];
+  const clinics = CLINICS.map((clinic, index) => ({
+    id: clinic.id,
+    name: clinic.nameAr,
+    doctors: [5, 4, 3, 3, 2, 4, 3, 3, 4, 5, 4][index] || 3,
+    patients: [1200, 980, 760, 690, 540, 620, 580, 650, 710, 830, 900][index] || 500,
+  }));
 
   const articles = [
     { id: "1", title: "كيفية العناية بأسنانك", category: "نصائح طبية", date: "2025-11-20" },

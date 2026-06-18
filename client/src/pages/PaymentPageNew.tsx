@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -21,114 +21,131 @@ import {
   Smartphone,
   Wallet,
   Zap,
-  Tag,
+  Loader2,
 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { apiClient } from "@/services/api/client";
+import { useToast } from "@/hooks/use-toast";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Invoice {
   id: string;
-  date: string;
-  service: string;
+  _id?: string;
+  patientId: string;
+  sessionId?: string;
   amount: number;
-  status: "paid" | "pending" | "overdue";
-  doctor?: string;
+  status: "paid" | "pending" | "overdue" | "cancelled";
+  paymentMethod?: string;
+  paymentDate?: string;
+  createdAt?: string;
+  // Enriched from join (not always present)
+  serviceName?: string;
+  doctorName?: string;
 }
 
+interface Balance {
+  totalDue: number;
+  totalPaid: number;
+  balance: number;
+}
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "paid":    return { variant: "default" as const,      label: "✓ مدفوع",         color: "bg-green-100 dark:bg-green-900/30" };
+    case "pending": return { variant: "secondary" as const,    label: "⏳ قيد الانتظار", color: "bg-yellow-100 dark:bg-yellow-900/30" };
+    case "overdue": return { variant: "destructive" as const,  label: "✕ متأخر",         color: "bg-red-100 dark:bg-red-900/30" };
+    default:        return { variant: "outline" as const,      label: status,             color: "" };
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function PaymentPageNew() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [filterStatus, setFilterStatus] = useState("all");
-  const [paymentMethod, setPaymentMethod] = useState("credit-card");
-  const [installmentMonths, setInstallmentMonths] = useState(1);
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    {
-      id: "INV001",
-      date: "2025-10-15",
-      service: "فحص عام وأشعات سينية",
-      amount: 250,
-      status: "paid",
-      doctor: "د. محمد أحمد",
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [payingId, setPayingId] = useState<string | null>(null);
+
+  // Step 1: resolve patient profile from session user
+  const { data: patientProfile, isLoading: loadingProfile } = useQuery({
+    queryKey: ["my-patient-profile", user?.id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/patients/user/${user?.id}`);
+      return res.data;
     },
-    {
-      id: "INV002",
-      date: "2025-10-28",
-      service: "جلسة تنظيف عميق",
-      amount: 150,
-      status: "paid",
-      doctor: "د. فاطمة علي",
+    enabled: !!user?.id,
+  });
+  const patientId = patientProfile?.id || patientProfile?._id;
+
+  // Step 2: FIX (H9) — fetch REAL invoices for this patient
+  const { data: invoices = [], isLoading: loadingInvoices } = useQuery<Invoice[]>({
+    queryKey: ["patient-invoices", patientId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/payments/patient/${patientId}`);
+      // API returns array directly
+      return (Array.isArray(res.data) ? res.data : res.data?.data ?? []).map((p: any) => ({
+        ...p,
+        id: p._id || p.id,
+      }));
     },
-    {
-      id: "INV003",
-      date: "2025-11-10",
-      service: "حشو تجميلي - ضرسين",
-      amount: 400,
-      status: "pending",
-      doctor: "د. فاطمة علي",
+    enabled: !!patientId,
+  });
+
+  // Step 3: FIX (H9) — fetch REAL balance summary
+  const { data: balance, isLoading: loadingBalance } = useQuery<Balance>({
+    queryKey: ["patient-balance", patientId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/patient/${patientId}/balance`);
+      return res.data;
     },
-  ]);
+    enabled: !!patientId,
+  });
 
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardHolder, setCardHolder] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [cvv, setCvv] = useState("");
-  const [discountCode, setDiscountCode] = useState("");
-  const [discountApplied, setDiscountApplied] = useState(false);
-  const [discountPercent, setDiscountPercent] = useState(0);
-  const [saveCard, setSaveCard] = useState(false);
+  // Step 4: FIX (H9) — wire Pay Now to PATCH /payments/:id/pay
+  const payMutation = useMutation({
+    mutationFn: async ({ id, method }: { id: string; method: string }) => {
+      const res = await apiClient.patch(`/api/v1/payments/${id}/pay`, { paymentMethod: method });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patient-invoices", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patient-balance", patientId] });
+      setPayingId(null);
+      toast({ title: "تم الدفع بنجاح", description: "تم تسجيل دفعتك وتحديث الرصيد." });
+    },
+    onError: (err: any) => {
+      setPayingId(null);
+      toast({
+        title: "فشل الدفع",
+        description: err?.response?.data?.message || "حدث خطأ أثناء معالجة الدفع",
+        variant: "destructive",
+      });
+    },
+  });
 
-  const discountCodes: Record<string, number> = {
-    SAVE10: 10,
-    SAVE20: 20,
-    WELCOME5: 5,
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return { variant: "default" as const, label: "✓ مدفوع", color: "bg-green-100 dark:bg-green-900/30" };
-      case "pending":
-        return { variant: "secondary" as const, label: "⏳ قيد الانتظار", color: "bg-yellow-100 dark:bg-yellow-900/30" };
-      case "overdue":
-        return { variant: "destructive" as const, label: "✕ متأخر", color: "bg-red-100 dark:bg-red-900/30" };
-      default:
-        return { variant: "outline" as const, label: "معروف", color: "" };
-    }
-  };
-
-  const totalAmount = invoices.reduce((sum, inv) => sum + inv.amount, 0);
-  const paidAmount = invoices.filter((inv) => inv.status === "paid").reduce((sum, inv) => sum + inv.amount, 0);
-  const pendingAmount = invoices.filter((inv) => inv.status === "pending").reduce((sum, inv) => sum + inv.amount, 0);
-
-  const applyDiscount = (code: string) => {
-    if (discountCodes[code]) {
-      setDiscountPercent(discountCodes[code]);
-      setDiscountApplied(true);
-    } else {
-      setDiscountApplied(false);
-      setDiscountPercent(0);
-      alert("كود الخصم غير صحيح!");
-    }
+  const handlePay = (invoiceId: string) => {
+    setPayingId(invoiceId);
+    payMutation.mutate({ id: invoiceId, method: paymentMethod });
   };
 
   const filteredInvoices = invoices.filter((inv) =>
     filterStatus === "all" ? true : inv.status === filterStatus
   );
 
-  // Payment Plans Calculation
-  const getInstallmentPlan = (amount: number, months: number) => {
-    const monthlyPayment = amount / months;
-    const interest = amount * 0.02; // 2% interest
-    return {
-      monthlyPayment: Math.round(monthlyPayment * 100) / 100,
-      totalWithInterest: amount + interest,
-      totalInterest: interest,
-      months,
-    };
-  };
+  const isLoading = loadingProfile || loadingInvoices || loadingBalance;
 
-  const selectedInvoiceAmount = pendingAmount;
-  const plan = getInstallmentPlan(selectedInvoiceAmount, installmentMonths);
+  // Derive totals from real balance API (fall back to local calc if balance not loaded yet)
+  const totalDue  = balance?.totalDue  ?? invoices.reduce((s, i) => s + i.amount, 0);
+  const totalPaid = balance?.totalPaid ?? invoices.filter(i => i.status === "paid").reduce((s, i) => s + i.amount, 0);
+  const totalPending = balance?.balance ?? invoices.filter(i => i.status === "pending").reduce((s, i) => s + i.amount, 0);
 
-  // Calculate discount
-  const discountedAmount = selectedInvoiceAmount - (selectedInvoiceAmount * discountPercent) / 100;
-  const discountedMonthly = getInstallmentPlan(discountedAmount, installmentMonths).monthlyPayment;
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -144,7 +161,11 @@ export default function PaymentPageNew() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">إجمالي الفواتير</p>
-                <p className="text-3xl font-bold text-primary">{totalAmount} ج.م</p>
+                {loadingBalance ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mt-1" />
+                ) : (
+                  <p className="text-3xl font-bold text-primary">{totalDue} ج.م</p>
+                )}
               </div>
               <DollarSign className="h-8 w-8 text-primary/30" />
             </div>
@@ -155,7 +176,11 @@ export default function PaymentPageNew() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">المدفوع</p>
-                <p className="text-3xl font-bold text-green-600">{paidAmount} ج.م</p>
+                {loadingBalance ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-green-600 mt-1" />
+                ) : (
+                  <p className="text-3xl font-bold text-green-600">{totalPaid} ج.م</p>
+                )}
               </div>
               <CheckCircle className="h-8 w-8 text-green-600/30" />
             </div>
@@ -166,7 +191,11 @@ export default function PaymentPageNew() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">المتبقي</p>
-                <p className="text-3xl font-bold text-red-600">{pendingAmount} ج.م</p>
+                {loadingBalance ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-red-600 mt-1" />
+                ) : (
+                  <p className="text-3xl font-bold text-red-600">{totalPending} ج.م</p>
+                )}
               </div>
               <AlertCircle className="h-8 w-8 text-red-600/30" />
             </div>
@@ -175,10 +204,9 @@ export default function PaymentPageNew() {
       </div>
 
       <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="invoices">الفواتير ({filteredInvoices.length})</TabsTrigger>
           <TabsTrigger value="payment">الدفع</TabsTrigger>
-          <TabsTrigger value="plans">خطط الدفع</TabsTrigger>
         </TabsList>
 
         {/* Invoices Tab */}
@@ -192,56 +220,67 @@ export default function PaymentPageNew() {
                 onClick={() => setFilterStatus(status)}
                 data-testid={`button-filter-${status}`}
               >
-                {status === "all"
-                  ? "جميع الفواتير"
-                  : status === "paid"
-                  ? "مدفوعة"
-                  : status === "pending"
-                  ? "قيد الانتظار"
+                {status === "all" ? "جميع الفواتير"
+                  : status === "paid" ? "مدفوعة"
+                  : status === "pending" ? "قيد الانتظار"
                   : "متأخرة"}
               </Button>
             ))}
           </div>
 
-          {filteredInvoices.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : filteredInvoices.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <CheckCircle className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                <p className="text-muted-foreground">لا توجد فواتير</p>
+                <p className="text-muted-foreground">
+                  {filterStatus === "all" ? "لا توجد فواتير بعد" : "لا توجد فواتير بهذه الحالة"}
+                </p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
               {filteredInvoices.map((invoice) => {
                 const statusInfo = getStatusBadge(invoice.status);
+                const isBusy = payingId === invoice.id && payMutation.isPending;
                 return (
                   <Card key={invoice.id} data-testid={`card-invoice-${invoice.id}`}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-bold">{invoice.service}</h3>
+                            <h3 className="font-bold">{invoice.serviceName || "جلسة علاجية"}</h3>
                             <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {invoice.doctor} • {invoice.date}
+                            {invoice.doctorName && `${invoice.doctorName} • `}
+                            {invoice.paymentDate || invoice.createdAt?.split("T")[0] || "—"}
                           </p>
                         </div>
                         <p className="text-2xl font-bold text-primary">{invoice.amount} ج.م</p>
                       </div>
 
                       <div className="flex gap-2 pt-4 border-t">
-                        <Button size="sm" variant="outline" className="flex-1" data-testid={`button-view-${invoice.id}`}>
+                        <Button size="sm" variant="outline" className="flex-1" data-testid={`button-view-${invoice.id}`} disabled>
                           <Eye className="h-4 w-4 ml-2" />
                           عرض
                         </Button>
-                        <Button size="sm" variant="outline" className="flex-1" data-testid={`button-download-${invoice.id}`}>
+                        <Button size="sm" variant="outline" className="flex-1" data-testid={`button-download-${invoice.id}`} disabled>
                           <Download className="h-4 w-4 ml-2" />
                           تحميل PDF
                         </Button>
                         {invoice.status === "pending" && (
-                          <Button size="sm" className="flex-1" data-testid={`button-pay-${invoice.id}`}>
-                            ادفع الآن
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            disabled={isBusy}
+                            onClick={() => handlePay(invoice.id)}
+                            data-testid={`button-pay-${invoice.id}`}
+                          >
+                            {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "ادفع الآن"}
                           </Button>
                         )}
                       </div>
@@ -253,55 +292,16 @@ export default function PaymentPageNew() {
           )}
         </TabsContent>
 
-        {/* Payment Tab */}
+        {/* Payment Method Tab */}
         <TabsContent value="payment" className="mt-6 space-y-6">
-          {selectedInvoiceAmount > 0 ? (
+          {totalPending > 0 ? (
             <Card className="border-2 border-primary/20">
               <CardHeader>
                 <CardTitle>دفع الفواتير المعلقة</CardTitle>
-                <CardDescription>
-                  المبلغ المتبقي: {selectedInvoiceAmount} ج.م
-                </CardDescription>
+                <CardDescription>المبلغ المتبقي: {totalPending} ج.م</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Discount Code */}
-                <div className="space-y-3">
-                  <label className="text-sm font-semibold flex items-center gap-2">
-                    <Tag className="h-4 w-4" />
-                    كود الخصم (اختياري)
-                  </label>
-                  <div className="flex gap-2">
-                    <Select value={discountCode} onValueChange={setDiscountCode}>
-                      <SelectTrigger data-testid="select-discount">
-                        <SelectValue placeholder="اختر كود خصم" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(discountCodes).map((code) => (
-                          <SelectItem key={code} value={code}>
-                            {code} ({discountCodes[code]}% خصم)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      onClick={() => applyDiscount(discountCode)}
-                      disabled={!discountCode}
-                      data-testid="button-apply-discount"
-                    >
-                      تطبيق
-                    </Button>
-                  </div>
-                  {discountApplied && (
-                    <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-green-600 dark:text-green-400">
-                        تم تطبيق خصم بنسبة {discountPercent}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Payment Method */}
+                {/* Payment Method Selector */}
                 <div className="space-y-3">
                   <label className="text-sm font-semibold">طريقة الدفع</label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -309,16 +309,16 @@ export default function PaymentPageNew() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="cash">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="h-4 w-4" />
+                          نقداً
+                        </div>
+                      </SelectItem>
                       <SelectItem value="credit-card">
                         <div className="flex items-center gap-2">
                           <CreditCard className="h-4 w-4" />
                           بطاقة ائتمان
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="wallet">
-                        <div className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4" />
-                          محفظة رقمية
                         </div>
                       </SelectItem>
                       <SelectItem value="bank">
@@ -331,83 +331,48 @@ export default function PaymentPageNew() {
                   </Select>
                 </div>
 
-                {/* Card Details */}
-                {paymentMethod === "credit-card" && (
-                  <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-900/20 rounded">
-                    <Input
-                      placeholder="رقم البطاقة"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value)}
-                      data-testid="input-card-number"
-                    />
-                    <Input
-                      placeholder="اسم حامل البطاقة"
-                      value={cardHolder}
-                      onChange={(e) => setCardHolder(e.target.value)}
-                      data-testid="input-card-holder"
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        placeholder="MM/YY"
-                        value={expiryDate}
-                        onChange={(e) => setExpiryDate(e.target.value)}
-                        data-testid="input-expiry"
-                      />
-                      <Input
-                        placeholder="CVV"
-                        value={cvv}
-                        onChange={(e) => setCvv(e.target.value)}
-                        data-testid="input-cvv"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="saveCard"
-                        checked={saveCard}
-                        onChange={(e) => setSaveCard(e.target.checked)}
-                        className="w-4 h-4"
-                        data-testid="checkbox-save-card"
-                      />
-                      <label htmlFor="saveCard" className="text-sm">
-                        حفظ البطاقة للمستقبل
-                      </label>
-                    </div>
-                  </div>
-                )}
+                {/* Pending invoices list for bulk action hint */}
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-muted-foreground">الفواتير المعلقة:</p>
+                  {invoices
+                    .filter((i) => i.status === "pending")
+                    .map((inv) => (
+                      <div key={inv.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <span className="text-sm">{inv.serviceName || "جلسة علاجية"}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{inv.amount} ج.م</span>
+                          <Button
+                            size="sm"
+                            disabled={payingId === inv.id && payMutation.isPending}
+                            onClick={() => handlePay(inv.id)}
+                            data-testid={`button-pay-tab-${inv.id}`}
+                          >
+                            {payingId === inv.id && payMutation.isPending
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : "ادفع"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
 
                 {/* Price Summary */}
                 <Card className="bg-primary/5 dark:bg-primary/10">
                   <CardContent className="p-4 space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>الإجمالي الأصلي:</span>
-                      <span>{selectedInvoiceAmount} ج.م</span>
+                      <span>إجمالي المستحق:</span>
+                      <span>{totalDue} ج.م</span>
                     </div>
-                    {discountApplied && (
-                      <div className="flex justify-between text-sm text-green-600">
-                        <span>الخصم ({discountPercent}%):</span>
-                        <span>-{Math.round((selectedInvoiceAmount * discountPercent) / 100)} ج.م</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>المدفوع:</span>
+                      <span>{totalPaid} ج.م</span>
+                    </div>
                     <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                      <span>المبلغ النهائي:</span>
-                      <span className="text-primary">
-                        {discountedAmount} ج.م
-                      </span>
+                      <span>المبلغ النهائي المتبقي:</span>
+                      <span className="text-primary">{totalPending} ج.م</span>
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* Payment Button */}
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={() => alert("تم معالجة الدفع بنجاح!")}
-                  data-testid="button-complete-payment"
-                >
-                  <Smartphone className="h-5 w-5 ml-2" />
-                  اكمل الدفع ({discountedAmount} ج.م)
-                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -419,103 +384,12 @@ export default function PaymentPageNew() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
 
-        {/* Payment Plans Tab */}
-        <TabsContent value="plans" className="mt-6 space-y-6">
-          {selectedInvoiceAmount > 0 ? (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <label className="text-sm font-semibold">اختر مدة الخطة</label>
-                <Select value={installmentMonths.toString()} onValueChange={(v) => setInstallmentMonths(parseInt(v))}>
-                  <SelectTrigger data-testid="select-installment">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">دفعة واحدة</SelectItem>
-                    <SelectItem value="3">3 أشهر</SelectItem>
-                    <SelectItem value="6">6 أشهر</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Plan Cards */}
-              <div className="grid gap-4 md:grid-cols-3">
-                {[
-                  { months: 1, label: "دفعة فورية" },
-                  { months: 3, label: "3 أقساط" },
-                  { months: 6, label: "6 أقساط" },
-                ].map((option) => {
-                  const optionPlan = getInstallmentPlan(selectedInvoiceAmount, option.months);
-                  const optionDiscountedMonthly = getInstallmentPlan(discountedAmount, option.months).monthlyPayment;
-                  return (
-                    <Card
-                      key={option.months}
-                      className={`cursor-pointer transition ${
-                        installmentMonths === option.months
-                          ? "border-primary border-2 bg-primary/5 dark:bg-primary/10"
-                          : ""
-                      }`}
-                      onClick={() => setInstallmentMonths(option.months)}
-                      data-testid={`card-plan-${option.months}`}
-                    >
-                      <CardContent className="p-6 text-center space-y-3">
-                        <h3 className="font-bold text-lg">{option.label}</h3>
-                        <div className="space-y-1">
-                          <p className="text-3xl font-bold text-primary">
-                            {discountApplied ? optionDiscountedMonthly : optionPlan.monthlyPayment} ج.م
-                          </p>
-                          <p className="text-xs text-muted-foreground">شهرياً</p>
-                        </div>
-                        <div className="text-sm space-y-1 pt-3 border-t">
-                          <p>
-                            الإجمالي:{" "}
-                            <span className="font-semibold">
-                              {discountApplied ? discountedAmount : selectedInvoiceAmount} ج.م
-                            </span>
-                          </p>
-                          {option.months > 1 && (
-                            <p className="text-xs text-muted-foreground">
-                              (فائدة 2%: +{Math.round(optionPlan.totalInterest)} ج.م)
-                            </p>
-                          )}
-                        </div>
-                        {installmentMonths === option.months && (
-                          <Badge className="w-full justify-center">مختار</Badge>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {/* Select Plan Summary */}
-              <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                <CardContent className="p-4">
-                  <p className="text-sm mb-2">
-                    <span className="font-semibold">الخطة المختارة:</span> {installmentMonths} شهر
-                  </p>
-                  <div className="text-lg font-bold text-primary">
-                    {discountApplied ? discountedMonthly : plan.monthlyPayment} ج.م شهرياً
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    استطيع تغيير الخطة في أي وقت من إعدادات الدفع
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Button size="lg" className="w-full" data-testid="button-select-plan">
-                اختيار هذه الخطة
-              </Button>
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <CheckCircle className="h-12 w-12 mx-auto text-green-400 mb-4" />
-                <p className="text-lg font-semibold">لا توجد فواتير معلقة</p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Payment note */}
+          <p className="text-xs text-muted-foreground text-center">
+            <Smartphone className="h-3 w-3 inline ml-1" />
+            يتم تسجيل الدفع فوراً في النظام — لا حاجة لبوابة دفع إلكترونية في هذه المرحلة
+          </p>
         </TabsContent>
       </Tabs>
     </div>

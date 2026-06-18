@@ -1,9 +1,20 @@
-import { useState, useEffect } from "react";
-import DashboardStats from "@/components/DashboardStats";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import MedicalStaffDashboard from "@/components/MedicalStaffDashboard";
 import { apiGet } from "@/services/api";
 import { motion } from "framer-motion";
-import { Calendar, MessageSquare, FileText, CreditCard, Phone, Smile, TrendingUp, Activity, Lightbulb, Clock } from "lucide-react";
+import {
+    Activity,
+    Bell,
+    Brain,
+    Calendar,
+    CheckCircle2,
+    CreditCard,
+    FileText,
+    Pill,
+    RefreshCw,
+    Smile,
+    TrendingUp,
+} from "lucide-react";
 
 interface HomePageProps {
     userName: string;
@@ -13,378 +24,441 @@ interface HomePageProps {
     language?: "ar" | "en";
 }
 
-interface NextAppointment {
-    date: string;
-    doctorName: string;
-    clinicName: string;
+interface DashboardAppointment {
+    id?: string;
+    date?: string;
+    time?: string;
+    status?: string;
+    doctorName?: string | null;
+    clinicName?: string | null;
 }
 
-interface TreatmentStep {
-    id: string;
+interface DashboardDiagnosis {
+    id?: string;
+    title?: string | null;
+    urgency?: string | null;
+    suggestedClinic?: {
+        name?: string;
+        nameAr?: string;
+        nameEn?: string;
+    } | null;
+    createdAt?: string | null;
+}
+
+interface DashboardTreatmentPlan {
+    id?: string;
+    title?: string;
+    description?: string | null;
+    status?: string;
+    reviewStatus?: string | null;
+    isAiDraft?: boolean;
+    isFinal?: boolean;
+    doctorName?: string | null;
+    updatedAt?: string | null;
+    procedures?: Array<{
+        id?: string;
+        name: string;
+        status: string;
+    }>;
+}
+
+interface PatientDashboardSummary {
+    patient?: {
+        id: string;
+        fullName?: string | null;
+    };
+    nextAppointment: DashboardAppointment | null;
+    latestDiagnosis: DashboardDiagnosis | null;
+    treatmentPlan: DashboardTreatmentPlan | null;
+    medications: {
+        activeCount: number;
+        todayDosesCount: number;
+    };
+    notifications: {
+        unreadCount: number;
+    };
+    balance: {
+        totalDue: number;
+        totalPaid: number;
+        balance: number;
+    };
+    appointmentStats: {
+        upcomingCount: number;
+        completedCount: number;
+    };
+}
+
+const STATUS_LABELS: Record<string, { ar: string; en: string }> = {
+    scheduled: { ar: "مجدول", en: "Scheduled" },
+    "in-progress": { ar: "قيد التنفيذ", en: "In progress" },
+    completed: { ar: "مكتمل", en: "Completed" },
+    deferred: { ar: "مؤجل", en: "Deferred" },
+    cancelled: { ar: "ملغي", en: "Cancelled" },
+    "no-show": { ar: "لم يحضر", en: "No show" },
+    pending_doctor_review: { ar: "قيد مراجعة الطبيب", en: "Pending doctor review" },
+    approved: { ar: "معتمدة", en: "Approved" },
+    revision_requested: { ar: "تحتاج إعادة تقييم", en: "Needs re-evaluation" },
+};
+
+function formatDate(value: string | null | undefined, language: "ar" | "en") {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return new Intl.DateTimeFormat(language === "ar" ? "ar-EG" : "en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+    }).format(date);
+}
+
+function formatMoney(value: number | undefined, language: "ar" | "en") {
+    return new Intl.NumberFormat(language === "ar" ? "ar-EG" : "en-US", {
+        maximumFractionDigits: 0,
+    }).format(value || 0);
+}
+
+function getStatusLabel(status: string | null | undefined, language: "ar" | "en") {
+    if (!status) return "";
+    return STATUS_LABELS[status]?.[language] || status;
+}
+
+function getTreatmentStatus(plan: DashboardTreatmentPlan | null, language: "ar" | "en") {
+    if (!plan) return "";
+    if (plan.isFinal || plan.reviewStatus === "approved") {
+        return language === "ar" ? "خطة معتمدة" : "Approved plan";
+    }
+    if (plan.isAiDraft || plan.reviewStatus === "pending_doctor_review") {
+        return language === "ar" ? "قيد مراجعة الطبيب" : "Pending doctor review";
+    }
+    return getStatusLabel(plan.reviewStatus || plan.status, language);
+}
+
+function DashboardSkeleton() {
+    return (
+        <div className="space-y-6">
+            <div className="h-32 rounded-xl bg-slate-100 animate-pulse dark:bg-slate-800" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                    <div key={index} className="h-32 rounded-xl bg-slate-100 animate-pulse dark:bg-slate-800" />
+                ))}
+            </div>
+            <div className="h-40 rounded-xl bg-slate-100 animate-pulse dark:bg-slate-800" />
+        </div>
+    );
+}
+
+interface DataCardProps {
+    icon: ComponentType<{ className?: string }>;
+    label: string;
     title: string;
-    status: "completed" | "current" | "pending";
+    detail: string;
+    tone: "teal" | "emerald" | "amber" | "cyan" | "slate";
+    empty?: boolean;
+    onClick?: () => void;
 }
 
-export default function HomePage({
-    userName,
-    userType,
-    userId,
-    onNavigate,
-    language = "ar"
-}: HomePageProps) {
-    // If medical staff, show medical staff dashboard
-    const isMedicalStaff = ['doctor', 'student', 'graduate'].includes(userType);
+function DataCard({ icon: Icon, label, title, detail, tone, empty, onClick }: DataCardProps) {
+    const toneClasses = {
+        teal: "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+        emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+        amber: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+        cyan: "bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+        slate: "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+    }[tone];
 
-    if (isMedicalStaff) {
+    const body = (
+        <>
+            <div className="flex items-center justify-between gap-3">
+                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${toneClasses}`}>
+                    <Icon className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</span>
+            </div>
+            <div className="mt-4 text-start">
+                <h3 className={`text-base font-bold leading-snug ${empty ? "text-slate-500 dark:text-slate-400" : "text-slate-900 dark:text-white"}`}>
+                    {title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{detail}</p>
+            </div>
+        </>
+    );
+
+    const className = "rounded-xl border border-slate-100 bg-white p-5 text-start shadow-sm transition-all dark:border-slate-700 dark:bg-slate-800";
+
+    if (onClick) {
         return (
-            <MedicalStaffDashboard
-                userName={userName}
-                userType={userType}
-                userId={userId}
-                onNavigate={onNavigate}
-                language={language}
-            />
+            <motion.button
+                type="button"
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={onClick}
+                className={`${className} hover:border-teal-200 hover:shadow-md dark:hover:border-teal-700`}
+            >
+                {body}
+            </motion.button>
         );
     }
 
-    // Patient Dashboard (existing code)
-    const today = new Date();
-    const [balance, setBalance] = useState<number>(0);
-    const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
-    const [treatmentSteps, setTreatmentSteps] = useState<TreatmentStep[]>([
-        { id: "1", title: language === "ar" ? "الفحص" : "Checkup", status: "pending" },
-        { id: "2", title: language === "ar" ? "الأشعة" : "X-Ray", status: "pending" },
-        { id: "3", title: language === "ar" ? "التنظيف" : "Cleaning", status: "pending" },
-        { id: "4", title: language === "ar" ? "الحشو" : "Filling", status: "pending" },
-        { id: "5", title: language === "ar" ? "المتابعة" : "Follow-up", status: "pending" },
-    ]);
+    return <div className={className}>{body}</div>;
+}
+
+interface StatCardProps {
+    icon: ComponentType<{ className?: string }>;
+    title: string;
+    value: ReactNode;
+    detail: string;
+    onClick?: () => void;
+}
+
+function StatCard({ icon: Icon, title, value, detail, onClick }: StatCardProps) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="rounded-xl border border-slate-100 bg-white p-5 text-start shadow-sm transition-all hover:border-teal-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-teal-700"
+        >
+            <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-900 dark:text-white">{title}</h3>
+                <Icon className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">{value}</div>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{detail}</p>
+        </button>
+    );
+}
+
+function PatientDashboard({ userName, onNavigate, language = "ar" }: HomePageProps) {
+    const [summary, setSummary] = useState<PatientDashboardSummary | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!userId) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                // Fetch balance using API service layer
-                const balanceRes = await apiGet<{ balance: number }>(`/patient/${userId}/balance`);
-                if (balanceRes.success) {
-                    setBalance(balanceRes.data?.balance || 0);
-                }
-
-                // Fetch next appointment using API service layer
-                const appointmentRes = await apiGet<any>(`/dashboard/next-appointment`);
-                if (appointmentRes.success && appointmentRes.data) {
-                    setNextAppointment({
-                        date: appointmentRes.data.date,
-                        doctorName: appointmentRes.data.doctorName,
-                        clinicName: appointmentRes.data.clinicName
-                    });
-                }
-
-                // Fetch treatment plans to calculate progress
-                const treatmentRes = await apiGet<{ treatmentPlans: Array<{ status: string; steps: Array<{ _id: string; title: string; status: string }> }> }>(`/patients/${userId}`);
-                if (treatmentRes.success && treatmentRes.data?.treatmentPlans && treatmentRes.data.treatmentPlans.length > 0) {
-                    const activePlan = treatmentRes.data.treatmentPlans.find(p => p.status === 'in-progress') || treatmentRes.data.treatmentPlans[0];
-                    if (activePlan && activePlan.steps) {
-                        setTreatmentSteps(activePlan.steps.map((step, idx) => ({
-                            id: step._id || String(idx),
-                            title: step.title,
-                            status: step.status as "completed" | "current" | "pending"
-                        })));
-                    }
-                }
-            } catch {
-                // Fail silently, keep default values
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchData();
-    }, [userId]);
-
+    const today = new Date();
     const dayNames = language === "ar"
         ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
         : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
     const monthNames = language === "ar"
         ? ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
         : ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     const greeting = () => {
         const hour = today.getHours();
-        if (language === "ar") {
-            if (hour < 12) return "صباح الخير";
-            if (hour < 18) return "مساء الخير";
-            return "مساء الخير";
-        } else {
-            if (hour < 12) return "Good Morning";
-            if (hour < 18) return "Good Afternoon";
-            return "Good Evening";
+        if (language === "ar") return hour < 12 ? "صباح الخير" : "مساء الخير";
+        if (hour < 12) return "Good Morning";
+        if (hour < 18) return "Good Afternoon";
+        return "Good Evening";
+    };
+
+    const loadDashboard = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const response = await apiGet<PatientDashboardSummary>("/dashboard/patient-summary");
+            setSummary(response.data || null);
+        } catch {
+            setSummary(null);
+            setError(language === "ar" ? "تعذر تحميل بيانات لوحة التحكم. حاول مرة أخرى." : "Unable to load dashboard data. Please try again.");
+        } finally {
+            setLoading(false);
         }
     };
 
-    const formatAppointmentDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return `${date.getDate()} ${monthNames[date.getMonth()]}`;
-    };
+    useEffect(() => {
+        void loadDashboard();
+    }, [language]);
 
-    const quickActions = [
-        { IconComponent: Calendar, label: language === "ar" ? "حجز موعد" : "Book", page: "appointments", color: "bg-teal-500" },
-        { IconComponent: MessageSquare, label: language === "ar" ? "تواصل" : "Chat", page: "chat", color: "bg-emerald-500" },
-        { IconComponent: FileText, label: language === "ar" ? "السجل" : "Records", page: "medical-records", color: "bg-cyan-500" },
-        { IconComponent: CreditCard, label: language === "ar" ? "الدفع" : "Pay", page: "payment", color: "bg-amber-500" },
-        { IconComponent: Phone, label: language === "ar" ? "طوارئ" : "Emergency", page: "chat", color: "bg-red-500" },
-    ];
-
-    const healthTips = language === "ar" ? [
-        "تنظيف الأسنان بعد الأكل بـ30 دقيقة أفضل من التنظيف الفوري!",
-        "استخدم خيط الأسنان مرة واحدة يومياً على الأقل",
-        "قم بزيارة طبيب الأسنان كل 6 أشهر للفحص الدوري",
-        "تجنب المشروبات الغازية والسكريات للحفاظ على أسنانك",
-    ] : [
-        "Brushing 30 minutes after eating is better than immediately!",
-        "Use dental floss at least once daily",
-        "Visit your dentist every 6 months for regular checkups",
-        "Avoid sugary drinks to maintain healthy teeth",
-    ];
-
-    const tipIndex = today.getDate() % healthTips.length;
-    const dailyTip = healthTips[tipIndex];
-    const completedSteps = treatmentSteps.filter(s => s.status === "completed").length;
-    const progressPercent = treatmentSteps.length > 0 ? Math.round((completedSteps / treatmentSteps.length) * 100) : 0;
-    const isRTL = language === "ar";
+    const displayName = summary?.patient?.fullName || userName;
+    const nextAppointment = summary?.nextAppointment || null;
+    const latestDiagnosis = summary?.latestDiagnosis || null;
+    const treatmentPlan = summary?.treatmentPlan || null;
+    const procedures = treatmentPlan?.procedures || [];
+    const diagnosisClinic = latestDiagnosis?.suggestedClinic?.nameAr || latestDiagnosis?.suggestedClinic?.name || latestDiagnosis?.suggestedClinic?.nameEn;
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             className="space-y-6"
+            dir={language === "ar" ? "rtl" : "ltr"}
         >
-            {/* Welcome Header - Compact Professional Version */}
-            <motion.div
-                initial={{ scale: 0.95 }}
-                animate={{ scale: 1 }}
-                className="bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl p-5 text-white shadow-md hover:shadow-lg transition-shadow"
-            >
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-teal-100 text-xs uppercase tracking-wide mb-1.5">
-                            {dayNames[today.getDay()]} · {today.getDate()} {monthNames[today.getMonth()]} {today.getFullYear()}
-                        </p>
-                        <h1 className="text-xl md:text-2xl font-bold mb-1 flex items-center gap-2">
-                            {greeting()}, {userName}
-                            <Smile className="w-5 h-5" />
-                        </h1>
-                        <p className="text-teal-50 text-sm font-medium">
-                            {language === "ar" ? "ابتسامتك تبدأ من هنا" : "Your smile starts here"}
-                        </p>
-                    </div>
-                    <div className="hidden md:flex items-center justify-center w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm">
-                        <Activity className="w-7 h-7" />
-                    </div>
-                </div>
-            </motion.div>
-
-            {/* Status Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Next Appointment */}
-                <motion.button
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-md border border-slate-100 dark:border-slate-700 cursor-pointer hover:shadow-xl hover:border-teal-200 dark:hover:border-teal-700 transition-all text-right w-full group"
-                    onClick={() => onNavigate?.("appointments")}
-                >
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="w-11 h-11 rounded-lg bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center group-hover:bg-teal-100 dark:group-hover:bg-teal-900/50 transition-colors">
-                            <Calendar className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-                        </div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {language === "ar" ? "الموعد القادم" : "Next Appointment"}
-                        </span>
-                    </div>
-                    {nextAppointment ? (
-                        <>
-                            <p className="text-lg font-bold text-slate-800 dark:text-white">{formatAppointmentDate(nextAppointment.date)}</p>
-                            <p className="text-sm text-teal-600 dark:text-teal-400">{nextAppointment.doctorName}</p>
-                            <p className="text-xs text-slate-400">{nextAppointment.clinicName}</p>
-                        </>
-                    ) : (
-                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {language === "ar" ? "لا توجد مواعيد قادمة" : "No upcoming appointments"}
-                        </p>
-                    )}
-                </motion.button>
-
-                {/* Treatment Progress */}
-                <motion.button
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-md border border-slate-100 dark:border-slate-700 cursor-pointer hover:shadow-xl hover:border-emerald-200 dark:hover:border-emerald-700 transition-all text-right w-full group"
-                    onClick={() => onNavigate?.("treatment-plans")}
-                >
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="w-11 h-11 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/50 transition-colors">
-                            <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                        </div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {language === "ar" ? "تقدم العلاج" : "Treatment Progress"}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="relative w-14 h-14">
-                            <svg className="w-14 h-14 transform -rotate-90">
-                                <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none" className="text-slate-200 dark:text-slate-700" />
-                                <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="none"
-                                    className="text-emerald-500"
-                                    strokeDasharray={`${progressPercent * 1.51} 151`}
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                            <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800 dark:text-white">
-                                {progressPercent}%
-                            </span>
-                        </div>
-                        <div>
-                            <p className="text-sm font-semibold text-slate-800 dark:text-white">{completedSteps}/{treatmentSteps.length}</p>
-                            <p className="text-xs text-slate-400">{language === "ar" ? "مراحل مكتملة" : "Steps done"}</p>
-                        </div>
-                    </div>
-                </motion.button>
-
-                {/* Balance */}
-                <motion.button
-                    whileHover={{ scale: 1.03, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-md border border-slate-100 dark:border-slate-700 cursor-pointer hover:shadow-xl hover:border-amber-200 dark:hover:border-amber-700 transition-all text-right w-full group"
-                    onClick={() => onNavigate?.("payment")}
-                >
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="w-11 h-11 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-colors">
-                            <CreditCard className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                        </div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {language === "ar" ? "الرصيد المستحق" : "Balance Due"}
-                        </span>
-                    </div>
-                    <p className="text-2xl font-bold text-slate-800 dark:text-white">{balance}</p>
-                    <p className="text-sm text-amber-600 dark:text-amber-400">{language === "ar" ? "جنيه مصري" : "EGP"}</p>
-                </motion.button>
-
-                {/* Health Status */}
-                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-md border border-slate-100 dark:border-slate-700 text-right hover:shadow-lg transition-all">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="w-11 h-11 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center">
-                            <Activity className="w-5 h-5 text-green-600 dark:text-green-400" />
-                        </div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {language === "ar" ? "حالتك الصحية" : "Health Status"}
-                        </span>
-                    </div>
-                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                        {language === "ar" ? "جيدة جداً" : "Very Good"}
-                    </p>
-                    <p className="text-xs text-slate-400">{language === "ar" ? "آخر فحص: قبل أسبوع" : "Last check: 1 week ago"}</p>
-                </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-md border border-slate-100 dark:border-slate-700">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-lg">
-                        <div className="flex h-2 w-2 rounded-full bg-teal-500 animate-pulse" />
-                        {language === "ar" ? "إجراءات سريعة" : "Quick Actions"}
-                    </h3>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                    {quickActions.map((action, index) => {
-                        const Icon = action.IconComponent;
-                        return (
-                            <button
-                                key={index}
-                                onClick={() => onNavigate?.(action.page)}
-                                className="group relative flex flex-col items-center p-4 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-all active:scale-95 border border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-md"
-                            >
-                                <div className={`w-12 h-12 ${action.color} rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:-translate-y-1 transition-all duration-300`}>
-                                    <Icon className="w-6 h-6 text-white" />
-                                </div>
-                                <span className="mt-3 text-xs font-semibold text-slate-600 dark:text-slate-300 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
-                                    {action.label}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Treatment Timeline */}
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-md border border-slate-100 dark:border-slate-700"
-            >
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-teal-500" />
-                        {language === "ar" ? "رحلة علاجك" : "Your Treatment Journey"}
-                    </h3>
+            {loading ? (
+                <DashboardSkeleton />
+            ) : error ? (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-6 text-start text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                    <p className="font-semibold">{error}</p>
                     <button
-                        onClick={() => onNavigate?.("treatment-plans")}
-                        className="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                        type="button"
+                        onClick={loadDashboard}
+                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
                     >
-                        {isRTL ? "← عرض التفاصيل" : "View Details →"}
+                        <RefreshCw className="h-4 w-4" />
+                        {language === "ar" ? "إعادة المحاولة" : "Retry"}
                     </button>
                 </div>
-                <div className="flex items-center justify-between">
-                    {treatmentSteps.map((step, index) => (
-                        <div key={step.id} className="flex items-center">
-                            <div className="flex flex-col items-center">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold
-                  ${step.status === "completed" ? "bg-emerald-500" :
-                                        step.status === "current" ? "bg-teal-500 ring-4 ring-teal-200 dark:ring-teal-900" :
-                                            "bg-slate-300 dark:bg-slate-600"}`}
-                                >
-                                    {step.status === "completed" ? "✓" : index + 1}
-                                </div>
-                                <span className={`text-xs mt-2 text-center max-w-16
-                  ${step.status === "current" ? "text-teal-600 dark:text-teal-400 font-semibold" : "text-slate-500 dark:text-slate-400"}`}
-                                >
-                                    {step.title}
-                                </span>
+            ) : (
+                <>
+                    <section className="rounded-xl bg-gradient-to-l from-teal-600 to-teal-500 p-6 text-white shadow-sm">
+                        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                            <div className="text-start">
+                                <p className="text-sm font-medium text-teal-50">
+                                    {dayNames[today.getDay()]}، {today.getDate()} {monthNames[today.getMonth()]} {today.getFullYear()}
+                                </p>
+                                <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold md:text-3xl">
+                                    <Smile className="h-6 w-6" />
+                                    {greeting()}، {displayName}
+                                </h1>
+                                <p className="mt-2 text-sm text-teal-50">
+                                    {language === "ar" ? "ملخصك الصحي من بياناتك الفعلية في النظام" : "Your health summary from real system data"}
+                                </p>
                             </div>
-                            {index < treatmentSteps.length - 1 && (
-                                <div className={`w-8 md:w-12 h-1 mx-1 rounded
-                  ${step.status === "completed" ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`}
-                                />
-                            )}
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20">
+                                <Activity className="h-7 w-7" />
+                            </div>
                         </div>
-                    ))}
-                </div>
-            </motion.div>
+                    </section>
 
-            {/* Health Tip - Professional Medical Advice */}
-            <div className="bg-gradient-to-br from-teal-50 via-cyan-50 to-teal-50 dark:from-teal-950/30 dark:via-cyan-950/30 dark:to-teal-950/30 rounded-xl p-5 border border-teal-100 dark:border-teal-800 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-md">
-                        <Lightbulb className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                        <h3 className="font-bold text-teal-900 dark:text-teal-100 mb-2 text-base flex items-center gap-2">
-                            {language === "ar" ? "نصيحة صحية" : "Health Tip"}
-                            <span className="text-xs font-normal text-teal-600 dark:text-teal-400 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {language === "ar" ? "اليوم" : "Today"}
-                            </span>
-                        </h3>
-                        <p className="text-sm text-teal-800 dark:text-teal-200 leading-relaxed">{dailyTip}</p>
-                    </div>
-                </div>
-            </div>
+                    <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        <DataCard
+                            icon={Calendar}
+                            tone="teal"
+                            label={language === "ar" ? "الموعد القادم" : "Next appointment"}
+                            title={nextAppointment ? `${formatDate(nextAppointment.date, language)}${nextAppointment.time ? ` · ${nextAppointment.time}` : ""}` : language === "ar" ? "لا توجد مواعيد قادمة" : "No upcoming appointments"}
+                            detail={nextAppointment ? [nextAppointment.doctorName, nextAppointment.clinicName].filter(Boolean).join(" · ") : language === "ar" ? "سيظهر هنا أقرب موعد مؤكد لك." : "Your nearest confirmed appointment will appear here."}
+                            empty={!nextAppointment}
+                            onClick={() => onNavigate?.("appointments")}
+                        />
+                        <DataCard
+                            icon={Brain}
+                            tone="cyan"
+                            label={language === "ar" ? "آخر تشخيص ذكي" : "Latest smart diagnosis"}
+                            title={latestDiagnosis?.title || (language === "ar" ? "لم يتم إجراء تشخيص ذكي بعد" : "No smart diagnosis yet")}
+                            detail={latestDiagnosis ? [diagnosisClinic, formatDate(latestDiagnosis.createdAt, language)].filter(Boolean).join(" · ") : language === "ar" ? "ابدأ التشخيص الذكي عند الحاجة." : "Start a smart diagnosis when needed."}
+                            empty={!latestDiagnosis}
+                            onClick={() => onNavigate?.(latestDiagnosis ? "ai-diagnosis" : "ai-diagnosis")}
+                        />
+                        <DataCard
+                            icon={FileText}
+                            tone="emerald"
+                            label={language === "ar" ? "الخطة العلاجية" : "Treatment plan"}
+                            title={treatmentPlan?.title || (language === "ar" ? "لا توجد خطة علاجية حتى الآن" : "No treatment plan yet")}
+                            detail={treatmentPlan ? [getTreatmentStatus(treatmentPlan, language), treatmentPlan.doctorName].filter(Boolean).join(" · ") : language === "ar" ? "ستظهر الخطة عند توفرها في النظام." : "Your plan will appear once available."}
+                            empty={!treatmentPlan}
+                            onClick={() => onNavigate?.("treatment-plans")}
+                        />
+                        <DataCard
+                            icon={Pill}
+                            tone="amber"
+                            label={language === "ar" ? "الأدوية اليوم" : "Today's medications"}
+                            title={
+                                summary?.medications.activeCount
+                                    ? language === "ar"
+                                        ? `${summary.medications.activeCount} أدوية نشطة`
+                                        : `${summary.medications.activeCount} active medications`
+                                    : language === "ar"
+                                        ? "لا توجد أدوية نشطة"
+                                        : "No active medications"
+                            }
+                            detail={
+                                summary?.medications.todayDosesCount
+                                    ? language === "ar"
+                                        ? `${summary.medications.todayDosesCount} جرعات مسجلة لليوم`
+                                        : `${summary.medications.todayDosesCount} doses scheduled today`
+                                    : language === "ar"
+                                        ? "لا توجد جرعات مسجلة اليوم."
+                                        : "No doses scheduled today."
+                            }
+                            empty={!summary?.medications.activeCount}
+                            onClick={() => onNavigate?.("medications")}
+                        />
+                    </section>
+
+                    <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <StatCard
+                            icon={Calendar}
+                            title={language === "ar" ? "ملخص المواعيد" : "Appointment summary"}
+                            value={language === "ar"
+                                ? `${summary?.appointmentStats.upcomingCount || 0} قادمة · ${summary?.appointmentStats.completedCount || 0} مكتملة`
+                                : `${summary?.appointmentStats.upcomingCount || 0} upcoming · ${summary?.appointmentStats.completedCount || 0} completed`}
+                            detail={language === "ar" ? "محسوبة من مواعيدك فقط" : "Calculated from your appointments only"}
+                            onClick={() => onNavigate?.("appointments")}
+                        />
+                        <StatCard
+                            icon={Bell}
+                            title={language === "ar" ? "الإشعارات غير المقروءة" : "Unread notifications"}
+                            value={summary?.notifications.unreadCount || 0}
+                            detail={language === "ar" ? "من إشعاراتك الفعلية" : "From your actual notifications"}
+                            onClick={() => onNavigate?.("notifications")}
+                        />
+                        <StatCard
+                            icon={CreditCard}
+                            title={language === "ar" ? "الرصيد المستحق" : "Balance due"}
+                            value={`${formatMoney(summary?.balance.balance, language)} ${language === "ar" ? "جنيه مصري" : "EGP"}`}
+                            detail={language === "ar" ? "من بيانات الجلسات والمدفوعات" : "From sessions and payments"}
+                            onClick={() => onNavigate?.("payment")}
+                        />
+                    </section>
+
+                    <section className="rounded-xl border border-slate-100 bg-white p-5 text-start shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                        <div className="mb-4 flex items-center justify-between gap-4">
+                            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+                                <TrendingUp className="h-5 w-5 text-teal-600" />
+                                {language === "ar" ? "مراحل الخطة العلاجية" : "Treatment plan stages"}
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => onNavigate?.("treatment-plans")}
+                                className="text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                            >
+                                {language === "ar" ? "عرض التفاصيل" : "View details"}
+                            </button>
+                        </div>
+
+                        {!treatmentPlan ? (
+                            <div className="rounded-lg bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
+                                {language === "ar" ? "لا توجد خطة علاجية مسجلة حتى الآن." : "No treatment plan is registered yet."}
+                            </div>
+                        ) : procedures.length === 0 ? (
+                            <div className="rounded-lg bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
+                                {language === "ar" ? "لا توجد مراحل علاجية مسجلة لهذه الخطة." : "No treatment stages are registered for this plan."}
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {procedures.slice(0, 4).map((procedure, index) => (
+                                    <div key={procedure.id || `${procedure.name}-${index}`} className="flex items-center gap-4 rounded-lg border border-slate-100 p-4 dark:border-slate-700">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm font-bold text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+                                            {index + 1}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-slate-900 dark:text-white">{procedure.name}</p>
+                                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{getStatusLabel(procedure.status, language)}</p>
+                                        </div>
+                                        {procedure.status === "completed" && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </>
+            )}
         </motion.div>
     );
+}
+
+export default function HomePage(props: HomePageProps) {
+    const isMedicalStaff = ["doctor", "student", "graduate"].includes(props.userType);
+
+    if (isMedicalStaff) {
+        return (
+            <MedicalStaffDashboard
+                userName={props.userName}
+                userType={props.userType}
+                userId={props.userId}
+                onNavigate={props.onNavigate}
+                language={props.language}
+            />
+        );
+    }
+
+    return <PatientDashboard {...props} language={props.language || "ar"} />;
 }

@@ -232,8 +232,9 @@ router.delete('/users/:id', requireAdmin, async (req, res) => {
 router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
     try {
         const { newPassword } = req.body;
-        if (!newPassword || newPassword.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        // FIX (M2): Minimum raised from 6 → 8. Also require at least one non-space character.
+        if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters', messageAr: 'يجب أن تكون كلمة المرور 8 أحرف على الأقل' });
         }
 
         const user = await UserModel.findById(req.params.id);

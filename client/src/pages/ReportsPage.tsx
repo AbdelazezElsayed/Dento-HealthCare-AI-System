@@ -29,17 +29,20 @@ import {
   AlertCircle,
   FileText,
 } from "lucide-react";
+import { getClinicBySlug } from "@/constants/clinics";
+
+const clinicName = (slug: string, fallback: string) => getClinicBySlug(slug)?.nameAr || fallback;
 
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState("month");
 
   // My Appointments History
   const appointmentHistory = [
-    { date: "2025-06-15", clinic: "العلاج التحفظي", doctor: "د. محمد أحمد", status: "مكتمل", cost: 250 },
-    { date: "2025-06-08", clinic: "التشخيص والأشعة", doctor: "د. فاطمة علي", status: "مكتمل", cost: 150 },
+    { date: "2025-06-15", clinic: clinicName("conservative-dentistry", "العلاج التحفظي"), doctor: "د. محمد أحمد", status: "مكتمل", cost: 250 },
+    { date: "2025-06-08", clinic: clinicName("oral-diagnosis-periodontology", "التشخيص وعلاج اللثة"), doctor: "د. فاطمة علي", status: "مكتمل", cost: 150 },
     { date: "2025-05-30", clinic: "تنظيف أسنان", doctor: "د. سارة حسن", status: "مكتمل", cost: 200 },
     { date: "2025-05-20", clinic: "الفحص العام", doctor: "د. علي محمود", status: "مكتمل", cost: 100 },
-    { date: "2025-05-10", clinic: "العلاج التحفظي", doctor: "د. رشا محمد", status: "ملغى", cost: 0 },
+    { date: "2025-05-10", clinic: clinicName("conservative-dentistry", "العلاج التحفظي"), doctor: "د. رشا محمد", status: "ملغى", cost: 0 },
   ];
 
   // Payment History

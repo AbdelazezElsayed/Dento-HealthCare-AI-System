@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { clinicsEndpoints } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +24,14 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
+import {
+  CLINICS_ROUTE,
+  getClinicBySlug,
+  resolveClinicSlug,
+  shouldRedirectClinicToOverview,
+} from "@/constants/clinics";
 
 interface ClinicDetailProps {
   clinicId?: string;
@@ -31,9 +41,9 @@ interface ClinicDetailProps {
 // Clinic data for all 11 clinics
 const clinicsData: Record<string, any> = {
   diagnosis: {
-    name: "التشخيص والأشعة",
-    specialty: "Diagnosis & Radiology",
-    description: "مركز متقدم للتشخيص باستخدام أحدث أجهزة الأشعات والتصوير الطبي",
+    name: "التشخيص وعلاج اللثة",
+    specialty: "Oral Diagnosis and Periodontology",
+    description: "مركز متقدم للتشخيص السريري وعلاج اللثة باستخدام أحدث التقنيات",
     rating: 4.8,
     reviews: 245,
     waitTime: "15 دقيقة",
@@ -44,10 +54,10 @@ const clinicsData: Record<string, any> = {
     email: "diagnosis@dentodelta.edu.eg",
     location: "الدور الثاني - جناح التشخيص",
     imageColor: "from-blue-600 to-blue-400",
-    aboutShort: "عيادة متخصصة في التشخيص الدقيق باستخدام أحدث أجهزة التصوير",
-    aboutLong: `مركز التشخيص والأشعات بجامعة الدلتا للعلوم والتكنولوجيا يجمع بين الخبرة والتكنولوجيا الحديثة. 
-    نحن متخصصون في تقديم خدمات تشخيصية دقيقة وسريعة باستخدام أحدث الأجهزة والتقنيات.
-    الفريق الطبي المتخصص يعمل على توفير تقارير تفصيلية وسريعة لضمان أفضل علاج ممكن.`,
+    aboutShort: "عيادة متخصصة في التشخيص الدقيق وصحة اللثة",
+    aboutLong: `عيادة التشخيص وعلاج اللثة بجامعة الدلتا للعلوم والتكنولوجيا تجمع بين الخبرة والتكنولوجيا الحديثة.
+    نحن متخصصون في تقييم حالات الفم والأسنان وعلاج أمراض اللثة باستخدام أحدث الأجهزة والتقنيات.
+    الفريق الطبي المتخصص يعمل على توفير تقييم واضح وخطة متابعة مناسبة لكل حالة.`,
     doctors: [
       {
         id: "1",
@@ -116,8 +126,8 @@ const clinicsData: Record<string, any> = {
     ],
   },
   conservative: {
-    name: "العلاج التحفظي وطب وجراحة الجذور",
-    specialty: "Conservative & Endodontics",
+    name: "العلاج التحفظي",
+    specialty: "Conservative Dentistry",
     description: "علاجات حفظية متقدمة وحشوات جمالية بأحدث التقنيات",
     rating: 4.6,
     reviews: 312,
@@ -129,9 +139,9 @@ const clinicsData: Record<string, any> = {
     email: "conservative@dentodelta.edu.eg",
     location: "الدور الثاني - جناح العلاج",
     imageColor: "from-green-600 to-green-400",
-    aboutShort: "متخصصة في العلاجات التحفظية المتقدمة وعلاج جذور الأسنان",
-    aboutLong: `عيادة العلاج التحفظي وطب وجراحة الجذور متخصصة في الحفاظ على الأسنان الطبيعية.
-    نقدم خدمات حشو متقدمة وعلاجات جذرية بأحدث التقنيات الرقمية.
+    aboutShort: "متخصصة في العلاجات التحفظية المتقدمة",
+    aboutLong: `عيادة العلاج التحفظي متخصصة في الحفاظ على الأسنان الطبيعية.
+    نقدم خدمات حشو وترميم متقدمة بأحدث التقنيات الرقمية.
     فريقنا المتخصص يعمل بدقة عالية لضمان سلامة وصحة أسنانك.`,
     doctors: [
       {
@@ -200,7 +210,7 @@ const clinicsData: Record<string, any> = {
     ],
   },
   surgery: {
-    name: "جراحة الفم والفكين",
+    name: "جراحة الوجه والفكين",
     specialty: "Oral & Maxillofacial Surgery",
     description: "جراحات متقدمة بأحدث التقنيات والمعايير الطبية الدولية",
     rating: 4.9,
@@ -214,7 +224,7 @@ const clinicsData: Record<string, any> = {
     location: "الدور الثالث - غرفة الجراحة",
     imageColor: "from-red-600 to-red-400",
     aboutShort: "متخصصة في الجراحات المتقدمة للفم والفكين",
-    aboutLong: `عيادة جراحة الفم والفكين توفر خدمات جراحية عالية الجودة.
+    aboutLong: `عيادة جراحة الوجه والفكين توفر خدمات جراحية عالية الجودة.
     نستخدم أحدث التقنيات الجراحية والتخدير الحديث لضمان سلامة المريض.
     الفريق الطبي ذو خبرة عالية في جميع أنواع الجراحات.`,
     doctors: [
@@ -439,7 +449,7 @@ const clinicsData: Record<string, any> = {
     ],
   },
   gums: {
-    name: "اللثة",
+    name: "التشخيص وعلاج اللثة",
     specialty: "Periodontology",
     description: "علاجات متخصصة لصحة اللثة والوقاية من الأمراض",
     rating: 4.4,
@@ -453,7 +463,7 @@ const clinicsData: Record<string, any> = {
     location: "الدور الثاني - جناح اللثة",
     imageColor: "from-pink-600 to-pink-400",
     aboutShort: "متخصصة في صحة اللثة والوقاية من الأمراض",
-    aboutLong: `عيادة اللثة متخصصة في علاج أمراض اللثة والوقاية منها.
+    aboutLong: `عيادة التشخيص وعلاج اللثة متخصصة في علاج أمراض اللثة والوقاية منها.
     نوفر خدمات تنظيف متقدم وعلاجات لثوية حديثة.
     الهدف الأساسي هو الحفاظ على صحة اللثة والأسنان.`,
     doctors: [
@@ -518,7 +528,7 @@ const clinicsData: Record<string, any> = {
     ],
   },
   "oral-surgery": {
-    name: "الجراحة",
+    name: "جراحة الفم",
     specialty: "Oral Surgery",
     description: "جراحات متخصصة بأحدث التقنيات الحديثة",
     rating: 4.8,
@@ -532,7 +542,7 @@ const clinicsData: Record<string, any> = {
     location: "الدور الثالث - غرفة الجراحة",
     imageColor: "from-red-500 to-rose-500",
     aboutShort: "متخصصة في الجراحات الفموية المتقدمة",
-    aboutLong: `عيادة الجراحة متخصصة في جميع أنواع الجراحات الفموية.
+    aboutLong: `عيادة جراحة الفم متخصصة في جميع أنواع الجراحات الفموية.
     نستخدم تقنيات حديثة وتخدير آمن لضمان راحة المريض.
     الفريق له خبرة عالية في جميع الجراحات المعقدة.`,
     doctors: [
@@ -838,9 +848,9 @@ const clinicsData: Record<string, any> = {
     ],
   },
   pediatric: {
-    name: "أسنان الأطفال",
-    specialty: "Pediatric Dentistry",
-    description: "رعاية متخصصة وودية لأسنان الأطفال",
+    name: "أسنان الأطفال والاحتياجات الخاصة",
+    specialty: "Pediatric and Special Care Dentistry",
+    description: "رعاية متخصصة وودية لأسنان الأطفال وذوي الاحتياجات الخاصة",
     rating: 4.5,
     reviews: 189,
     waitTime: "15 دقيقة",
@@ -851,9 +861,9 @@ const clinicsData: Record<string, any> = {
     email: "pediatric@dentodelta.edu.eg",
     location: "الدور الأول - جناح الأطفال",
     imageColor: "from-lime-600 to-lime-400",
-    aboutShort: "متخصصة في رعاية أسنان الأطفال بطريقة ودية",
-    aboutLong: `عيادة أسنان الأطفال متخصصة في رعاية أسنان الصغار بطريقة ودية وآمنة.
-    نستخدم تقنيات حديثة وبسيطة تناسب الأطفال.
+    aboutShort: "متخصصة في رعاية أسنان الأطفال وذوي الاحتياجات الخاصة بطريقة ودية",
+    aboutLong: `عيادة أسنان الأطفال والاحتياجات الخاصة متخصصة في رعاية أسنان الصغار بطريقة ودية وآمنة.
+    نستخدم تقنيات حديثة وبسيطة تناسب الأطفال وذوي الاحتياجات الخاصة.
     الفريق مدرب على التعامل مع الخوف والقلق لدى الأطفال.`,
     doctors: [
       {
@@ -1080,13 +1090,134 @@ const clinicsData: Record<string, any> = {
   },
 };
 
+const withClinicIdentity = (sourceKey: string, slug: string, overrides: Record<string, any> = {}) => {
+  const definition = getClinicBySlug(slug);
+  return {
+    ...clinicsData[sourceKey],
+    id: definition?.id || slug,
+    slug,
+    name: definition?.nameAr || clinicsData[sourceKey]?.name,
+    nameAr: definition?.nameAr,
+    nameEn: definition?.nameEn,
+    specialty: definition?.nameEn || clinicsData[sourceKey]?.specialty,
+    ...overrides,
+  };
+};
+
+Object.assign(clinicsData, {
+  "oral-diagnosis-periodontology": withClinicIdentity("gums", "oral-diagnosis-periodontology", {
+    description: "تشخيص أمراض الفم والأسنان مع علاج أمراض اللثة ضمن عيادة واحدة.",
+    aboutShort: "تشخيص فموي وعناية متخصصة بصحة اللثة",
+    aboutLong: "تقدم عيادة التشخيص وعلاج اللثة تقييمًا سريريًا دقيقًا للحالة، مع خدمات علاج التهابات اللثة ومتابعة صحة الأنسجة الداعمة للأسنان.",
+  }),
+  "conservative-dentistry": withClinicIdentity("conservative", "conservative-dentistry", {
+    description: "علاجات تحفظية للحفاظ على الأسنان الطبيعية والحشوات الجمالية.",
+    aboutShort: "حشوات وعلاجات تحفظية للحفاظ على الأسنان",
+    aboutLong: "تركز عيادة العلاج التحفظي على حماية الأسنان الطبيعية، وعلاج التسوس، وترميم الأسنان بالحشوات المناسبة حسب حالة المريض.",
+  }),
+  endodontics: withClinicIdentity("conservative", "endodontics", {
+    description: "تشخيص وعلاج أمراض لب الأسنان وقنوات الجذور.",
+    aboutShort: "علاج جذور الأسنان وحالات التهاب العصب",
+    aboutLong: "تختص عيادة طب وجراحة الجذور بتقييم آلام العصب وحالات التهاب لب السن، وتقديم علاج جذور مناسب للحفاظ على السن كلما أمكن.",
+  }),
+  "oral-maxillofacial-surgery": withClinicIdentity("surgery", "oral-maxillofacial-surgery", {
+    description: "خدمات جراحة الوجه والفكين وفق المعايير الطبية المتخصصة.",
+    aboutShort: "جراحات الوجه والفكين المتخصصة",
+    aboutLong: "تقدم عيادة جراحة الوجه والفكين خدمات جراحية متخصصة للحالات التي تحتاج تقييمًا وتدخلًا جراحيًا متقدمًا.",
+  }),
+  "oral-surgery": withClinicIdentity("oral-surgery", "oral-surgery", {
+    description: "إجراءات جراحة الفم وخلع الأسنان والحالات الجراحية البسيطة.",
+    aboutShort: "جراحة الفم والإجراءات الجراحية الأساسية",
+    aboutLong: "تختص عيادة جراحة الفم بتقييم الحالات التي تحتاج إلى خلع أو تدخل جراحي داخل الفم، مع متابعة ما بعد الإجراء.",
+  }),
+  "removable-prosthodontics": withClinicIdentity("removable", "removable-prosthodontics"),
+  "fixed-prosthodontics": withClinicIdentity("fixed", "fixed-prosthodontics"),
+  "cosmetic-dentistry": withClinicIdentity("cosmetic", "cosmetic-dentistry"),
+  "implant-dentistry": withClinicIdentity("implants", "implant-dentistry", {
+    specialty: "Implant Dentistry",
+  }),
+  orthodontics: withClinicIdentity("orthodontics", "orthodontics"),
+  "pediatric-special-care-dentistry": withClinicIdentity("pediatric", "pediatric-special-care-dentistry", {
+    description: "رعاية أسنان الأطفال والمرضى ذوي الاحتياجات الخاصة بأسلوب آمن وودود.",
+    aboutShort: "رعاية أسنان الأطفال والاحتياجات الخاصة",
+    aboutLong: "تقدم عيادة أسنان الأطفال والاحتياجات الخاصة رعاية وقائية وعلاجية مناسبة للأطفال والمرضى الذين يحتاجون إلى عناية خاصة.",
+  }),
+});
+
 export default function ClinicDetailPage({
-  clinicId = "diagnosis",
+  clinicId = "oral-diagnosis-periodontology",
   onNavigate,
 }: ClinicDetailProps) {
   const [isFavorite, setIsFavorite] = useState(false);
+  const [, setLocation] = useLocation();
+  const shouldRedirectToOverview = shouldRedirectClinicToOverview(clinicId);
+  const resolvedClinicSlug = resolveClinicSlug(clinicId);
+  const effectiveClinicId = typeof resolvedClinicSlug === "string" ? resolvedClinicSlug : clinicId;
 
-  const clinic = clinicsData[clinicId] || clinicsData["diagnosis"];
+  useEffect(() => {
+    if (shouldRedirectToOverview) {
+      setLocation(CLINICS_ROUTE);
+    }
+  }, [setLocation, shouldRedirectToOverview]);
+
+  const { data: response, isLoading, error } = useQuery<any>({
+    queryKey: ['clinic', effectiveClinicId],
+    queryFn: async () => {
+      if (clinicsData[effectiveClinicId]) {
+        return { data: clinicsData[effectiveClinicId] };
+      }
+      return clinicsEndpoints.getById(effectiveClinicId);
+    },
+    enabled: !!effectiveClinicId && !shouldRedirectToOverview
+  });
+
+  const clinicData = response?.data || response;
+  
+  if (shouldRedirectToOverview || isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">جاري تحميل بيانات العيادة...</p>
+      </div>
+    );
+  }
+
+  if (error || !clinicData) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-destructive">
+        <AlertCircle className="h-10 w-10 mb-4" />
+        <p className="font-semibold">حدث خطأ أثناء تحميل بيانات العيادة</p>
+        <Button variant="outline" className="mt-4" onClick={() => onNavigate?.("clinics")}>
+          العودة للعيادات
+        </Button>
+      </div>
+    );
+  }
+
+  // Construct clinic object mixing DB data with fallback UI defaults
+  const clinic = {
+    name: clinicData.nameAr || clinicData.name || "عيادة متخصصة",
+    specialty: clinicData.name || "تخصص عام",
+    description: clinicData.description || "خدمات طبية متخصصة",
+    rating: clinicData.rating || 4.8,
+    reviews: clinicData.reviews || 0,
+    waitTime: clinicData.waitTime || "20 دقيقة",
+    minPrice: clinicData.minPrice || 200,
+    maxPrice: clinicData.maxPrice || 1000,
+    hours: clinicData.hours || "8:00 AM - 7:00 PM",
+    phone: clinicData.phone || "+20-100-123-4567",
+    email: clinicData.email || "contact@dentodelta.edu.eg",
+    location: clinicData.location || "مبنى العيادات",
+    imageColor: clinicData.color || "from-blue-600 to-blue-400",
+    aboutShort: clinicData.description || "",
+    aboutLong: clinicData.description || "نقدم خدمات طبية متخصصة بأعلى جودة.",
+    doctors: clinicData.doctors || [],
+    services: clinicData.services || [],
+    equipment: clinicData.equipment || [],
+    highlights: clinicData.highlights || ["خدمة متميزة", "أطباء متخصصون", "تقنيات حديثة"],
+    images: clinicData.images || [],
+    ...clinicData // Override defaults if DB provides full fields or if it's the mocked fallback
+  };
 
   return (
     <div className="space-y-6">

@@ -115,6 +115,13 @@ export async function canAccessPatient(
     userType: string,
     targetPatientId: string
 ): Promise<boolean> {
+    const sameId = (left?: unknown, right?: unknown) => {
+        if (left === undefined || left === null || right === undefined || right === null) {
+            return false;
+        }
+        return String(left) === String(right);
+    };
+
     // Admins can access all
     if (userType === USER_TYPES.ADMIN) {
         return true;
@@ -123,7 +130,7 @@ export async function canAccessPatient(
     // Patients/students can only access their own data
     if (userType === USER_TYPES.PATIENT || userType === USER_TYPES.STUDENT) {
         const myPatientId = await getPatientIdFromUserId(userId);
-        return myPatientId === targetPatientId;
+        return sameId(myPatientId, targetPatientId);
     }
 
     // Doctors can access patients they have appointments with
@@ -133,7 +140,14 @@ export async function canAccessPatient(
 
         // Check if doctor has any appointments with this patient
         const appointments = await storage.getAppointmentsByDoctor(doctorId);
-        return appointments.some(apt => apt.patientId === targetPatientId);
+        if (appointments.some(apt => sameId(apt.patientId, targetPatientId))) {
+            return true;
+        }
+
+        // Backward compatibility for older appointment rows that stored the
+        // doctor's user id instead of the doctor profile id.
+        const legacyAppointments = await storage.getAppointmentsByDoctor(userId);
+        return legacyAppointments.some(apt => sameId(apt.patientId, targetPatientId));
     }
 
     return false;

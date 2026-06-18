@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { DirectionProvider } from "@radix-ui/react-direction";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -13,13 +14,13 @@ import { NotificationBell } from "@/components/common/NotificationBell";
 import AppSidebar from "@/components/AppSidebar";
 import DashboardStats from "@/components/DashboardStats";
 import PatientList from "@/components/PatientList";
-import TreatmentPlanCard from "@/components/TreatmentPlanCard";
 import ReportsList from "@/components/ReportsList";
 import ClinicCard from "@/components/ClinicCard";
 import UserProfileCard from "@/components/UserProfileCard";
 import PatientChatbot from "@/components/PatientChatbot";
 import FloatingChatbot from "@/components/FloatingChatbot";
 import DentocadPage from "@/pages/DentocadPage";
+import TreatmentPlansPage from "@/pages/TreatmentPlansPage";
 import TreatmentPlanDetailPage from "@/pages/TreatmentPlanDetailPage";
 import AppointmentBookingPageNew from "@/pages/AppointmentBookingPageNew";
 import DoctorManagementPage from "@/pages/DoctorManagementPage";
@@ -28,7 +29,8 @@ import RatingsPage from "@/pages/RatingsPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import SearchPage from "@/pages/SearchPage";
 import PaymentPageNew from "@/pages/PaymentPageNew";
-import DoctorPanelPage from "@/pages/DoctorPanelPage";
+import AIDiagnosisPage from "@/pages/AIDiagnosisPage";
+import DiagnosisHistoryPage from "@/pages/DiagnosisHistoryPage";
 import AdminPanelPage from "@/pages/AdminPanelPage";
 import SettingsPage from "@/pages/SettingsPage";
 import SupportTicketsPage from "@/pages/SupportTicketsPage";
@@ -38,23 +40,18 @@ import ClinicDetailPageNew from "@/pages/ClinicDetailPage";
 import HomePage from "@/pages/HomePage";
 import ReportsPage from "@/pages/ReportsPage";
 import ChatBotPage from "@/pages/ChatBotPage";
+import VoiceChatPage from "@/pages/VoiceChatPage";
 import MyAppointmentsPage from "@/pages/MyAppointmentsPage";
 import MedicationsPage from "@/pages/MedicationsPage";
 import MyReviewsPage from "@/pages/MyReviewsPage";
-import UpcomingRemindersPage from "@/pages/UpcomingRemindersPage";
-import DoctorSchedulePage from "@/pages/DoctorSchedulePage";
-import PatientQueuePage from "@/pages/PatientQueuePage";
-import PatientMedicalHistoryPage from "@/pages/PatientMedicalHistoryPage";
-import AppointmentsAnalyticsPage from "@/pages/AppointmentsAnalyticsPage";
-import DoctorProfilePage from "@/pages/DoctorProfilePage";
 import SignUpPage from "@/pages/SignUpPage";
-import AIDiagnosisPage from "@/pages/AIDiagnosisPage";
 import TodayAppointmentsPage from "@/components/TodayAppointmentsPage";
 import PriceManagementPage from "@/components/PriceManagementPage";
 import UnauthorizedPage from "@/pages/UnauthorizedPage";
+import { getClinicBySlug } from "@/constants/clinics";
 import { ProtectedRoute, AdminRoute, DoctorRoute, MedicalStaffRoute, PatientRoute, DoctorOnlyRoute } from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { Stethoscope, Syringe, Scissors, Layers, Building2, Moon, Sun, Activity, Sparkles, Baby, Smile, User, Globe, MessageCircle, ArrowRight, Home } from "lucide-react";
+import { Stethoscope, Syringe, Scissors, Layers, Building2, Moon, Sun, Activity, Sparkles, Baby, Smile, User, Globe, MessageCircle, ArrowLeft, ArrowRight, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -117,7 +114,7 @@ function LanguageToggle({ language, onLanguageChange }: { language: "ar" | "en";
       title={language === "ar" ? "English" : "العربية"}
     >
       <Globe className="h-5 w-5" />
-      <span className="text-xs ml-1">{language === "ar" ? "EN" : "AR"}</span>
+      <span className="text-xs ms-1">{language === "ar" ? "EN" : "AR"}</span>
     </Button>
   );
 }
@@ -253,45 +250,18 @@ function Dashboard() {
       },
     };
 
-    // Clinic name translations
-    const clinicNames = {
-      ar: {
-        diagnosis: "التشخيص والأشعة",
-        conservative: "العلاج التحفظي",
-        surgery: "جراحة الفم والفكين",
-        removable: "التركيبات المتحركة",
-        fixed: "التركيبات الثابتة",
-        gums: "اللثة",
-        "oral-surgery": "الجراحة",
-        cosmetic: "تجميل الأسنان",
-        implants: "زراعة الأسنان",
-        orthodontics: "تقويم الأسنان",
-        pediatric: "أسنان الأطفال",
-      },
-      en: {
-        diagnosis: "Diagnosis & Radiology",
-        conservative: "Conservative Treatment",
-        surgery: "Oral & Maxillofacial Surgery",
-        removable: "Removable Prosthetics",
-        fixed: "Fixed Prosthetics",
-        gums: "Periodontics",
-        "oral-surgery": "Surgery",
-        cosmetic: "Cosmetic Dentistry",
-        implants: "Dental Implants",
-        orthodontics: "Orthodontics",
-        pediatric: "Pediatric Dentistry",
-      },
-    };
-
     const t = breadcrumbTranslations[language];
-    const clinicT = clinicNames[language];
 
     const breadcrumbs = [{ name: t.home, path: "home" }];
 
-    if (activePage.startsWith("clinic-")) {
+    if (activePage.startsWith("clinic/")) {
       breadcrumbs.push({ name: t.clinics, path: "clinics" });
-      const clinicId = activePage.replace("clinic-", "");
-      breadcrumbs.push({ name: clinicT[clinicId as keyof typeof clinicT] || t.clinic, path: activePage });
+      const clinicId = activePage.replace("clinic/", "");
+      const clinic = getClinicBySlug(clinicId);
+      breadcrumbs.push({
+        name: clinic ? (language === "ar" ? clinic.nameAr : clinic.nameEn) : t.clinic,
+        path: activePage,
+      });
     } else if (activePage === "treatment-plans") {
       breadcrumbs.push({ name: t.treatmentPlans, path: activePage });
     } else if (activePage === "reports") {
@@ -378,7 +348,7 @@ function Dashboard() {
 
   return (
     <SidebarProvider defaultOpen={false} style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-screen w-full" dir={language === "ar" ? "rtl" : "ltr"}>
         <AppSidebar customPages={customPages} userType={userType} language={language} />
         <div className="flex flex-col flex-1">
           {/* Header with Navigation Controls */}
@@ -395,7 +365,7 @@ function Dashboard() {
                 data-testid="button-back"
                 className="transition-all hover-elevate"
               >
-                <ArrowRight className="h-5 w-5" />
+                {language === "ar" ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
               </Button>
 
               {/* Home Button */}
@@ -414,14 +384,14 @@ function Dashboard() {
               <Breadcrumb>
                 <BreadcrumbList>
                   {breadcrumbs.map((crumb, index) => (
-                    <div key={crumb.path} className="flex items-center">
+                    <div key={crumb.path} className="flex items-center gap-1">
                       {index > 0 && <BreadcrumbSeparator />}
                       <BreadcrumbItem>
                         {index === breadcrumbs.length - 1 ? (
                           <BreadcrumbPage className="font-semibold">{crumb.name}</BreadcrumbPage>
                         ) : (
                           <BreadcrumbLink
-                            className="cursor-pointer hover-elevate transition-all rounded px-2 py-1"
+                            className="cursor-pointer hover-elevate transition-all rounded px-2 py-1 text-start"
                             onClick={() => handleNavigate(crumb.path)}
                             data-testid={`breadcrumb-${crumb.path}`}
                           >
@@ -436,7 +406,7 @@ function Dashboard() {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
+              <div className="text-end hidden sm:block">
                 <p className="text-sm font-semibold">{userName}</p>
                 <p className="text-xs text-muted-foreground">
                   {language === "ar"
@@ -471,50 +441,12 @@ function Dashboard() {
                     <HomePage userName={userName} userType={userType} userId={userId} onNavigate={handleNavigate} language={language} />
                   </Route>
                   <Route path="/treatment-plans">
-                    <div className="space-y-6">
-                      <div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">الخطة العلاجية للمريض</h1>
-                        <p className="text-slate-500 dark:text-slate-400">متابعة مراحل العلاج الخاصة بك</p>
-                      </div>
-                      <TreatmentPlanCard
-                        patientName={userName}
-                        planTitle="خطة علاج التسوس والتنظيف"
-                        steps={[
-                          {
-                            id: "1",
-                            title: "الفحص الأولي والأشعة",
-                            description: "فحص شامل للفم والأسنان مع أخذ الأشعة اللازمة",
-                            status: "completed",
-                            date: "2025-10-15",
-                          },
-                          {
-                            id: "2",
-                            title: "تنظيف الأسنان وإزالة الجير",
-                            description: "جلسة تنظيف عميق للأسنان وإزالة الجير والبلاك",
-                            status: "in-progress",
-                            date: "2025-10-28",
-                          },
-                          {
-                            id: "3",
-                            title: "حشو الضرس الأول",
-                            description: "حشو تجميلي للضرس المصاب بالتسوس",
-                            status: "pending",
-                          },
-                        ]}
-                        onUpdateStep={() => { }}
-                        onViewDetails={() => handleNavigate("treatment-plan-detail")}
-                      />
-                    </div>
+                    <PatientRoute>
+                      <TreatmentPlansPage />
+                    </PatientRoute>
                   </Route>
                   <Route path="/dentocad">
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center p-12 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 max-w-md">
-                        <div className="text-6xl mb-6">🦷</div>
-                        <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-4">Dentocad</h1>
-                        <p className="text-xl text-teal-600 dark:text-teal-400 font-semibold mb-3">Coming Soon</p>
-                        <p className="text-slate-500 dark:text-slate-400">نعمل على تطوير هذه الميزة. ترقبوا التحديثات القادمة!</p>
-                      </div>
-                    </div>
+                    <DentocadPage />
                   </Route>
                   <Route path="/treatment-plan-detail">
                     <TreatmentPlanDetailPage onBackClick={() => handleNavigate("treatment-plans")} />
@@ -575,12 +507,20 @@ function Dashboard() {
                   <Route path="/chat">
                     <ChatBotPage />
                   </Route>
+                  <Route path="/voice-chat">
+                    <VoiceChatPage />
+                  </Route>
                   <Route path="/ai-diagnosis">
                     <AIDiagnosisPage />
                   </Route>
+                  <Route path="/diagnosis-history">
+                    <PatientRoute>
+                      <DiagnosisHistoryPage />
+                    </PatientRoute>
+                  </Route>
                   {/* Medical Staff Routes */}
                   <Route path="/today-appointments">
-                    <MedicalStaffRoute>
+                    <MedicalStaffRoute allowedRoles={['doctor', 'graduate']}>
                       <TodayAppointmentsPage language={language} />
                     </MedicalStaffRoute>
                   </Route>
@@ -605,6 +545,14 @@ function Dashboard() {
                     <SettingsPage customPages={customPages} setCustomPages={setCustomPages} />
                   </Route>
 
+                  {/* Admin-Only Routes */}
+                  <Route path="/admin-panel">
+                    {/* FIX (H6): AdminPanelPage was imported but had no Route — admin had NO UI. */}
+                    <AdminRoute>
+                      <AdminPanelPage />
+                    </AdminRoute>
+                  </Route>
+
                   {/* Unauthorized Page */}
                   <Route path="/unauthorized">
                     <UnauthorizedPage />
@@ -625,16 +573,27 @@ function Dashboard() {
   );
 }
 
+function DirectionalAppShell() {
+  const { language } = useLanguage();
+  const dir = language === "ar" ? "rtl" : "ltr";
+
+  return (
+    <DirectionProvider dir={dir}>
+      <TooltipProvider>
+        <Dashboard />
+        <Toaster />
+      </TooltipProvider>
+    </DirectionProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <AuthProvider>
           <LanguageProvider>
-            <TooltipProvider>
-              <Dashboard />
-              <Toaster />
-            </TooltipProvider>
+            <DirectionalAppShell />
           </LanguageProvider>
         </AuthProvider>
       </ErrorBoundary>

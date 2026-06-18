@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Hide Replit developer badge / banner ──────────────────────────────── */
+#replit-badge,
+[id^="replit"],
+[class*="replit-badge"],
+[class*="replit-banner"],
+[class*="replit-dev"],
+.__replit-toolbar,
+.__replit-debug,
+.replit-ui-theme-root > *:not(#root),
+iframe[src*="replit.com"],
+iframe[src*="replit.dev"],
+a[href*="replit.com"][target="_blank"]:has(svg),
+div[style*="z-index: 9999"][style*="position: fixed"]:not([id]):not([class]) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+/* ────────────────────────────────────────────────────────────────────────── */
+
+
 /* Smooth Page Transitions */
 @keyframes fadeIn {
   from {
@@ -272,6 +293,42 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    direction: inherit;
+    text-align: start;
+  }
+
+  #root {
+    min-height: 100vh;
+    direction: inherit;
+  }
+}
+
+@layer components {
+  .clinical-report-grid {
+    display: grid;
+    gap: 0;
+    grid-template-areas:
+      "primary"
+      "clinic";
+  }
+
+  .clinical-report-primary {
+    grid-area: primary;
+  }
+
+  .clinical-report-clinic {
+    grid-area: clinic;
+  }
+
+  @media (min-width: 1024px) {
+    .clinical-report-grid {
+      grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+      grid-template-areas: "primary clinic";
+    }
+  }
+
+  :dir(rtl) [data-slot="breadcrumb-separator"] svg {
+    transform: rotate(180deg);
   }
 }
 

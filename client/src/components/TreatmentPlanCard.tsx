@@ -15,7 +15,10 @@ interface TreatmentPlanCardProps {
   patientName: string;
   planTitle: string;
   steps: TreatmentStep[];
-  onUpdateStep?: (stepId: string) => void;
+  reviewStatus?: "pending_doctor_review" | "approved" | "revision_requested" | "rejected";
+  isAiDraft?: boolean;
+  isFinal?: boolean;
+  aiDisclaimer?: string;
   onViewDetails?: () => void;
 }
 
@@ -23,9 +26,38 @@ export default function TreatmentPlanCard({
   patientName,
   planTitle,
   steps,
-  onUpdateStep,
+  reviewStatus,
+  isAiDraft,
+  isFinal,
   onViewDetails
 }: TreatmentPlanCardProps) {
+  const isNeedsReevaluation = reviewStatus === "revision_requested";
+  const isApprovedFinal = !isNeedsReevaluation && (!!isFinal || reviewStatus === "approved");
+  const isPendingAiDraft = !isNeedsReevaluation && !!isAiDraft && reviewStatus === "pending_doctor_review";
+
+  const planNotice = isNeedsReevaluation
+    ? {
+        title: "تحتاج الحالة إلى إعادة تقييم",
+        message: "طلب الطبيب إعادة تقييم الحالة قبل اعتماد خطة علاجية نهائية.",
+        className: "border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100",
+        badgeClassName: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100",
+      }
+    : isApprovedFinal
+      ? {
+          title: "خطة علاجية معتمدة",
+          message: "تمت مراجعة هذه الخطة واعتمادها من الطبيب.",
+          className: "border-green-200 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950/30 dark:text-green-100",
+          badgeClassName: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100",
+        }
+      : isPendingAiDraft
+        ? {
+            title: "خطة علاجية مقترحة",
+            message: "هذه الخطة تم إنشاؤها بمساعدة الذكاء الاصطناعي، وسيتم اعتمادها بعد مراجعة الطبيب.",
+            className: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100",
+            badgeClassName: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100",
+          }
+        : null;
+
   const getStatusIcon = (status: TreatmentStep["status"]) => {
     switch (status) {
       case "completed":
@@ -53,6 +85,13 @@ export default function TreatmentPlanCard({
           <div>
             <CardTitle className="text-2xl">{planTitle}</CardTitle>
             <CardDescription className="text-base">المريض: {patientName}</CardDescription>
+            {planNotice && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge className={planNotice.badgeClassName}>
+                  {planNotice.title}
+                </Badge>
+              </div>
+            )}
           </div>
           {onViewDetails && (
             <Button
@@ -69,6 +108,13 @@ export default function TreatmentPlanCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {planNotice && (
+          <div className={`rounded-md border p-3 text-sm ${planNotice.className}`}>
+            <p className="font-semibold">{planNotice.title}</p>
+            <p className="mt-1">{planNotice.message}</p>
+          </div>
+        )}
+
         <div className="relative">
           <div className="absolute right-[22px] top-0 h-full w-0.5 bg-border"></div>
 
@@ -93,19 +139,6 @@ export default function TreatmentPlanCard({
                           <Calendar className="h-3 w-3" />
                           <span>{step.date}</span>
                         </div>
-                      )}
-                      {step.status !== "completed" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-3"
-                          onClick={() => {
-                            onUpdateStep?.(step.id);
-                          }}
-                          data-testid={`button-update-step-${step.id}`}
-                        >
-                          {step.status === "pending" ? "بدء التنفيذ" : "إكمال"}
-                        </Button>
                       )}
                     </CardContent>
                   </Card>

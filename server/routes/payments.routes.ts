@@ -63,7 +63,7 @@ router.post('/visit-sessions', requireRole('doctor', 'graduate'), async (req, re
     }
 });
 
-router.post('/visit-sessions/:id/attend', requireRole('doctor', 'graduate', 'student'), async (req, res) => {
+router.post('/visit-sessions/:id/attend', requireRole('doctor', 'graduate'), async (req, res) => {
     try {
         const existingSession = await storage.getVisitSession(req.params.id);
         if (!existingSession) {
@@ -133,6 +133,54 @@ router.post('/payments', requireDoctor, async (req, res) => {
     }
 });
 
+// FIX (H9): Patient self-pay endpoint.
+// Patients can mark their own pending invoices as paid.
+// Ownership check: the payment's patientId must match the session user's patient profile.
+// Per Q1 decision: immediately marks as paid in DB (cash confirmation flow, no gateway).
+router.patch('/payments/:id/pay', requireAuth, async (req, res) => {
+    try {
+        const payment = await storage.getPayment(req.params.id);
+        if (!payment) {
+            return res.status(404).json({ message: 'الفاتورة غير موجودة', messageEn: 'Invoice not found' });
+        }
+
+        // Ownership: patient can only pay their own invoices
+        const userType = req.session.userType;
+        if (userType === 'patient' || userType === 'student') {
+            const myPatientId = await getPatientIdFromUserId(req.session.userId!);
+            if (payment.patientId !== myPatientId) {
+                return res.status(403).json({ message: 'غير مصرح لك بدفع هذه الفاتورة', messageEn: 'Access denied' });
+            }
+        }
+
+        if (payment.status === 'paid') {
+            return res.status(400).json({ message: 'هذه الفاتورة مدفوعة بالفعل', messageEn: 'Invoice already paid' });
+        }
+
+        const { paymentMethod = 'cash' } = req.body;
+        const updated = await storage.updatePayment(req.params.id, {
+            status: 'paid',
+            paymentMethod,
+            paymentDate: new Date().toISOString().split('T')[0],
+        });
+
+        await logAudit({
+            userId: req.session.userId!,
+            action: 'PATIENT_PAY_INVOICE',
+            entityType: 'Payment',
+            entityId: req.params.id,
+            newData: { status: 'paid', paymentMethod },
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] as string,
+        });
+
+        res.json(updated);
+    } catch (err: any) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+
 // ============================================
 // PATIENT BALANCE
 // ============================================
@@ -175,7 +223,7 @@ router.get('/clinic-prices/:clinicId', requireAuth, async (req, res) => {
     }
 });
 
-router.put('/clinic-prices/:clinicId', requireRole('doctor'), async (req, res) => {
+router.put('/clinic-prices/:clinicId', requireRole('doctor', 'admin'), async (req, res) => {
     try {
         const price = await storage.upsertClinicPrice({
             clinicId: req.params.clinicId,

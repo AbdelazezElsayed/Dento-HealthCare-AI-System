@@ -1,9 +1,0 @@
-MONGODB_URI=mongodb+srv://abdelazezhamoud_db_user:Abdelazez1234@cluster0.pfv5hsl.mongodb.net/?appName=Cluster0
-SESSION_SECRET=local-development-secret-key-12345
-REPL_ID=local-dev
-GEMINI_API_KEY=AIzaSyCz8m4XblX0Z3xtNgXzq84gFYAX1KPyNzI
-PORT=5000
-NODE_ENV=development
-ALLOWED_ORIGINS=https://dento.com,https://admin.dento.com
-LOG_LEVEL=info
-LOG_DIR=logs

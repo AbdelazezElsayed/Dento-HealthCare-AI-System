@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -13,7 +12,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, Clock, User, MapPin, DollarSign, Check, AlertCircle, Smartphone, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Calendar, Clock, DollarSign, Check, AlertCircle, Smartphone, Loader2,
+  CheckCircle2, ClipboardList, HeartPulse, Pill, Bell, FileText, User,
+  Activity, Stethoscope, X
+} from "lucide-react";
+import { getClinicBySlug, getClinicEquivalentIds, resolveClinicSlug } from "@/constants/clinics";
 
 interface Appointment {
   id: string;
@@ -44,6 +54,13 @@ interface Doctor {
 
 export default function AppointmentBookingPageNew() {
   const queryClient = useQueryClient();
+  const bookingParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const requestedClinicId = bookingParams.get("clinicId") || "";
+  const requestedClinicName = bookingParams.get("clinicName") || "";
+  const requestedClinicSlug = resolveClinicSlug(requestedClinicId || requestedClinicName);
+  const requestedClinic = typeof requestedClinicSlug === "string" ? getClinicBySlug(requestedClinicSlug) : undefined;
+  const effectiveRequestedClinicId = requestedClinic?.id || "";
+  const displayedRequestedClinicName = requestedClinic?.nameAr || (requestedClinicSlug === null ? "" : requestedClinicName);
 
   // Fetch doctors from API
   const { data: doctorsData, isLoading: doctorsLoading } = useQuery<Doctor[]>({
@@ -89,6 +106,14 @@ export default function AppointmentBookingPageNew() {
   });
 
   const doctors: Doctor[] = doctorsData || [];
+  const doctorsForBooking = useMemo(() => {
+    if (!effectiveRequestedClinicId) return doctors;
+    const allowedClinicIds = getClinicEquivalentIds(effectiveRequestedClinicId);
+    return doctors.filter((doctor) => {
+      if (!doctor.clinicId) return false;
+      return getClinicEquivalentIds(doctor.clinicId).some((clinicId) => allowedClinicIds.includes(clinicId));
+    });
+  }, [doctors, effectiveRequestedClinicId]);
   
   // Map API appointments to display format
   const appointments: Appointment[] = (appointmentsData || []).map((apt: any) => {
@@ -130,6 +155,23 @@ export default function AppointmentBookingPageNew() {
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [filterStatus, setFilterStatus] = useState("all");
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [bookedDoctorName, setBookedDoctorName] = useState("");
+
+  useEffect(() => {
+    if (!effectiveRequestedClinicId) return;
+
+    setShowBookingForm(true);
+    if (doctorsForBooking.length === 0) {
+      if (selectedDoctor) setSelectedDoctor("");
+      return;
+    }
+
+    const selectedDoctorMatchesClinic = doctorsForBooking.some((doctor) => doctor.id === selectedDoctor);
+    if (!selectedDoctor || !selectedDoctorMatchesClinic) {
+      setSelectedDoctor(doctorsForBooking[0].id);
+    }
+  }, [doctorsForBooking, effectiveRequestedClinicId, selectedDoctor]);
 
   const handleBookAppointment = async () => {
     if (!selectedDoctor || !appointmentDate || !appointmentTime) {
@@ -145,14 +187,16 @@ export default function AppointmentBookingPageNew() {
         notes: "",
       });
 
+      const doctorData = doctors.find((d) => d.id === selectedDoctor);
+      setBookedDoctorName(doctorData?.fullName || doctorData?.name || "الطبيب");
+
       setSelectedDoctor("");
       setAppointmentDate("");
       setAppointmentTime("");
       setDuration("30");
       setReminderEnabled(true);
       setShowBookingForm(false);
-
-      alert("تم حجز الموعد بنجاح! سيتم تأكيده قريباً.");
+      setShowSuccessDialog(true);
     } catch (error: any) {
       alert(error.message || "حدث خطأ أثناء حجز الموعد");
     }
@@ -264,6 +308,20 @@ export default function AppointmentBookingPageNew() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {displayedRequestedClinicName && (
+                  <Card className="bg-primary/5 dark:bg-primary/10 border-primary/20">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <Stethoscope className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="text-xs text-muted-foreground">العيادة المقترحة</p>
+                          <p className="font-semibold">{displayedRequestedClinicName}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Step 1: Select Doctor */}
                 <div className="space-y-3">
                   <label className="text-sm font-semibold">
@@ -279,12 +337,14 @@ export default function AppointmentBookingPageNew() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                           <span className="mr-2">جاري التحميل...</span>
                         </div>
-                      ) : doctors.length === 0 ? (
+                      ) : doctorsForBooking.length === 0 ? (
                         <div className="p-4 text-center text-muted-foreground">
-                          لا يوجد أطباء متاحين حالياً
+                          {displayedRequestedClinicName
+                            ? `لا يوجد أطباء متاحين حالياً في ${displayedRequestedClinicName}`
+                            : "لا يوجد أطباء متاحين حالياً"}
                         </div>
                       ) : (
-                        doctors.map((doctor) => (
+                        doctorsForBooking.map((doctor) => (
                           <SelectItem key={doctor.id} value={doctor.id}>
                             <div className="flex items-center gap-2">
                               <span>{doctor.fullName || doctor.name}</span>
@@ -565,6 +625,34 @@ export default function AppointmentBookingPageNew() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* ── SUCCESS DIALOG ── */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="bg-green-100 dark:bg-green-900/30 p-4 rounded-full">
+                <CheckCircle2 className="h-10 w-10 text-green-600" />
+              </div>
+              <DialogTitle className="text-2xl mt-2">تم حجز الموعد بنجاح! 🎉</DialogTitle>
+              <p className="text-muted-foreground mt-2">
+                تم تسجيل حجزك مع الطبيب {bookedDoctorName} بنجاح. يمكنك متابعة الموعد من علامة تبويب "مواعيدي".
+              </p>
+            </div>
+          </DialogHeader>
+
+          <div className="flex gap-3 mt-6">
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={() => setShowSuccessDialog(false)}
+            >
+              <Check className="h-5 w-5 ml-2" />
+              حسناً
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

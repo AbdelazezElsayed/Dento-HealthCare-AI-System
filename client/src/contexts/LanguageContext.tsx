@@ -17,6 +17,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
+
   const handleLanguageChange = (lang: "ar" | "en") => {
     setLanguage(lang);
     localStorage.setItem("language", lang);

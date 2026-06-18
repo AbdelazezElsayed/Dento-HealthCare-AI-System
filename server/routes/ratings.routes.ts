@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { storage } from '../storage';
+import { RatingRepo } from '../repositories/rating.repo';
+import { DoctorRepo } from '../repositories/doctor.repo';
+import { NotificationService } from '../services/notification.service';
 import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validation';
 import { z } from 'zod';
@@ -17,10 +19,8 @@ const createRatingSchema = z.object({
 // Get all ratings
 router.get('/', async (_req, res) => {
     try {
-        const ratings = await storage.getRatings();
-        res.json(ratings);
+        res.json(await RatingRepo.findAll());
     } catch (err: any) {
-        logger.error('Error fetching ratings:', err);
         res.status(500).json({ message: 'Failed to fetch ratings', error: err.message });
     }
 });
@@ -28,11 +28,8 @@ router.get('/', async (_req, res) => {
 // Get ratings by doctor
 router.get('/doctor/:doctorId', async (req, res) => {
     try {
-        const { doctorId } = req.params;
-        const ratings = await storage.getRatingsByDoctor(doctorId);
-        res.json(ratings);
+        res.json(await RatingRepo.findByDoctor(req.params.doctorId));
     } catch (err: any) {
-        logger.error(`Error fetching ratings for doctor ${req.params.doctorId}:`, err);
         res.status(500).json({ message: 'Failed to fetch doctor ratings', error: err.message });
     }
 });
@@ -40,17 +37,10 @@ router.get('/doctor/:doctorId', async (req, res) => {
 // Get ratings by patient
 router.get('/patient/:patientId', requireAuth, async (req, res) => {
     try {
-        const { patientId } = req.params;
-
-        // Only allow users to see their own ratings or allow admins/staff
-        if (req.session.userId !== patientId && req.session.userType !== 'admin') {
+        if (req.session.userId !== req.params.patientId && req.session.userType !== 'admin')
             return res.status(403).json({ message: 'Access denied' });
-        }
-
-        const ratings = await storage.getRatingsByPatient(patientId);
-        res.json(ratings);
+        res.json(await RatingRepo.findByPatient(req.params.patientId));
     } catch (err: any) {
-        logger.error(`Error fetching ratings for patient ${req.params.patientId}:`, err);
         res.status(500).json({ message: 'Failed to fetch patient ratings', error: err.message });
     }
 });
@@ -59,31 +49,20 @@ router.get('/patient/:patientId', requireAuth, async (req, res) => {
 router.post('/', requireAuth, validateBody(createRatingSchema), async (req, res) => {
     try {
         const { doctorId, rating, comment } = req.body;
-        const patientId = req.session.userId;
+        const patientId = req.session.userId!;
 
-        if (!patientId) {
-            return res.status(401).json({ message: 'User not authenticated' });
-        }
+        const newRating = await RatingRepo.create({ doctorId, patientId, rating, comment, createdAt: new Date(), updatedAt: new Date() });
 
-        // TODO: Optional - Check if patient has an appointment with this doctor
-        // const hasAppointment = await storage.hasPatientAppointmentWithDoctor(patientId, doctorId);
-        // if (!hasAppointment) {
-        //   return res.status(403).json({ message: 'You can only rate doctors you have visited' });
-        // }
+        // ✅ Update doctor's average rating stats
+        const stats = await RatingRepo.getDoctorStats(doctorId);
+        await DoctorRepo.updateRatingStats(doctorId, stats.avgRating, stats.count);
 
-        const newRating = await storage.createRating({
-            doctorId,
-            patientId,
-            rating,
-            comment,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
+        // ✅ Notify doctor of new rating
+        await NotificationService.onRatingSubmitted({ doctorId, rating, comment, ratingId: newRating.id });
 
         logger.info(`Rating created: ${newRating.id} by patient ${patientId} for doctor ${doctorId}`);
         res.status(201).json(newRating);
     } catch (err: any) {
-        logger.error('Error creating rating:', err);
         res.status(400).json({ message: 'Failed to create rating', error: err.message });
     }
 });
@@ -93,28 +72,14 @@ router.put('/:id', requireAuth, validateBody(createRatingSchema), async (req, re
     try {
         const { id } = req.params;
         const { rating, comment } = req.body;
-        const userId = req.session.userId;
 
-        const existingRating = await storage.getRatingById(id);
-        if (!existingRating) {
-            return res.status(404).json({ message: 'Rating not found' });
-        }
-
-        // Only allow the rating author to update
-        if (existingRating.patientId !== userId) {
+        const existing = await RatingRepo.findById(id);
+        if (!existing) return res.status(404).json({ message: 'Rating not found' });
+        if (existing.patientId !== req.session.userId)
             return res.status(403).json({ message: 'You can only update your own ratings' });
-        }
 
-        const updatedRating = await storage.updateRating(id, {
-            rating,
-            comment,
-            updatedAt: new Date()
-        });
-
-        logger.info(`Rating updated: ${id} by patient ${userId}`);
-        res.json(updatedRating);
+        res.json(await RatingRepo.update(id, { rating, comment }));
     } catch (err: any) {
-        logger.error(`Error updating rating ${req.params.id}:`, err);
         res.status(400).json({ message: 'Failed to update rating', error: err.message });
     }
 });
@@ -122,24 +87,14 @@ router.put('/:id', requireAuth, validateBody(createRatingSchema), async (req, re
 // Delete a rating (soft delete)
 router.delete('/:id', requireAuth, async (req, res) => {
     try {
-        const { id } = req.params;
-        const userId = req.session.userId;
-
-        const existingRating = await storage.getRatingById(id);
-        if (!existingRating) {
-            return res.status(404).json({ message: 'Rating not found' });
-        }
-
-        // Only allow the rating author or admin to delete
-        if (existingRating.patientId !== userId && req.session.userType !== 'admin') {
+        const existing = await RatingRepo.findById(req.params.id);
+        if (!existing) return res.status(404).json({ message: 'Rating not found' });
+        if (existing.patientId !== req.session.userId && req.session.userType !== 'admin')
             return res.status(403).json({ message: 'You can only delete your own ratings' });
-        }
 
-        await storage.deleteRating(id);
-        logger.info(`Rating deleted: ${id} by user ${userId}`);
+        await RatingRepo.softDelete(req.params.id);
         res.json({ message: 'Rating deleted successfully' });
     } catch (err: any) {
-        logger.error(`Error deleting rating ${req.params.id}:`, err);
         res.status(400).json({ message: 'Failed to delete rating', error: err.message });
     }
 });

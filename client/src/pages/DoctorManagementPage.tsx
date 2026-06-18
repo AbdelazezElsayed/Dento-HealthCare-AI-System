@@ -87,7 +87,7 @@ export default function DoctorManagementPage() {
     );
   };
 
-  const uniqueSpecializations = [...new Set(doctors.map(d => d.specialization))];
+  const uniqueSpecializations = Array.from(new Set(doctors.map(d => d.specialization)));
 
   // Loading State
   if (isLoading) {

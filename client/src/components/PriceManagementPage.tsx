@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DollarSign, Save, Hospital } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CLINICS, getClinicEquivalentIds } from "@/constants/clinics";
 
 interface ClinicPrice {
   id: string;
@@ -16,20 +17,6 @@ interface ClinicPrice {
 interface PriceManagementPageProps {
   language?: "ar" | "en";
 }
-
-const defaultClinics = [
-  { id: "diagnosis", name: "التشخيص والأشعة", nameEn: "Diagnosis & Radiology" },
-  { id: "conservative", name: "العلاج التحفظي وطب وجراحة الجذور", nameEn: "Conservative & Endodontics" },
-  { id: "surgery", name: "جراحة الفم والفكين", nameEn: "Oral & Maxillofacial Surgery" },
-  { id: "removable", name: "التركيبات المتحركة", nameEn: "Removable Prosthodontics" },
-  { id: "fixed", name: "التركيبات الثابتة", nameEn: "Fixed Prosthodontics" },
-  { id: "gums", name: "اللثة", nameEn: "Periodontics" },
-  { id: "oral-surgery", name: "الجراحة", nameEn: "Surgery" },
-  { id: "cosmetic", name: "تجميل الأسنان", nameEn: "Cosmetic Dentistry" },
-  { id: "implants", name: "زراعة الأسنان", nameEn: "Dental Implants" },
-  { id: "orthodontics", name: "تقويم الأسنان", nameEn: "Orthodontics" },
-  { id: "pediatric", name: "أسنان الأطفال", nameEn: "Pediatric Dentistry" },
-];
 
 export default function PriceManagementPage({ language = "ar" }: PriceManagementPageProps) {
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -74,10 +61,11 @@ export default function PriceManagementPage({ language = "ar" }: PriceManagement
         data.forEach((p: ClinicPrice) => {
           priceMap[p.clinicId] = p.sessionPrice;
         });
-        defaultClinics.forEach(clinic => {
-          if (!priceMap[clinic.id]) {
-            priceMap[clinic.id] = "500";
-          }
+        CLINICS.forEach(clinic => {
+          const existingPrice = getClinicEquivalentIds(clinic.id)
+            .map((clinicId) => priceMap[clinicId])
+            .find(Boolean);
+          priceMap[clinic.id] = existingPrice || "500";
         });
         setPrices(priceMap);
       }
@@ -138,12 +126,12 @@ export default function PriceManagementPage({ language = "ar" }: PriceManagement
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {defaultClinics.map((clinic) => (
+        {CLINICS.map((clinic) => (
           <Card key={clinic.id} className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Hospital className="h-5 w-5 text-teal-600" />
-                {language === "ar" ? clinic.name : clinic.nameEn}
+                {language === "ar" ? clinic.nameAr : clinic.nameEn}
               </CardTitle>
             </CardHeader>
             <CardContent>

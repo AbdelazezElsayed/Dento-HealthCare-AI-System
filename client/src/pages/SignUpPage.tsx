@@ -8,11 +8,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserCircle, GraduationCap, Users, Stethoscope, Globe, Moon, Sun, Volume2, Eye, EyeOff, AlertTriangle, Check, HelpCircle, ArrowRight, UserPlus, Phone, Mail, Calendar, IdCard } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
-import loginBg from "@assets/stock_images/modern_dental_hospit_e3518571.jpg";
+
+const loginBg = "/attached_assets/stock_images/modern_dental_hospit_e3518571.jpg";
 
 interface SignUpPageProps {
   onSignUp?: () => Promise<void>; // Just trigger refetch after successful signup
   onLoginClick?: () => void;
+}
+
+interface BackendValidationError {
+  field?: string;
+  message?: string;
+}
+
+interface RegisterErrorResponse {
+  message?: string;
+  messageEn?: string;
+  errors?: BackendValidationError[];
 }
 
 export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) {
@@ -39,7 +51,6 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
 
   const userTypes = [
     { value: "patient", label: "مريض", labelEn: "Patient", icon: UserCircle },
-    { value: "doctor", label: "طبيب", labelEn: "Doctor", icon: Stethoscope },
     { value: "student", label: "طالب", labelEn: "Student", icon: GraduationCap },
     { value: "graduate", label: "إمتياز", labelEn: "Excellence", icon: Users },
   ];
@@ -73,7 +84,7 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
       invalidEmail: "البريد الإلكتروني غير صالح",
       invalidPhone: "رقم الهاتف غير صالح",
       passwordMismatch: "كلمة المرور غير متطابقة",
-      passwordWeak: "كلمة المرور ضعيفة (8 أحرف على الأقل)",
+      passwordWeak: "كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف كبير وحرف صغير ورقم",
       success: "تم إنشاء الحساب بنجاح!",
       enterFullName: "أدخل الاسم الكامل",
       enterEmail: "أدخل البريد الإلكتروني",
@@ -112,7 +123,7 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
       invalidEmail: "Invalid email address",
       invalidPhone: "Invalid phone number",
       passwordMismatch: "Passwords do not match",
-      passwordWeak: "Password is weak (minimum 8 characters)",
+      passwordWeak: "Password must be at least 8 characters and include uppercase, lowercase, and a number",
       success: "Account created successfully!",
       enterFullName: "Enter full name",
       enterEmail: "Enter email address",
@@ -126,6 +137,50 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
   };
 
   const t = translations[language];
+
+  const isPasswordStrong = (password: string) =>
+    password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password);
+
+  const getLocalizedBackendError = (field: string, message?: string) => {
+    if (field === "password") return t.passwordWeak;
+    if (field === "username") {
+      if (message?.toLowerCase().includes("at least 3")) {
+        return language === "ar" ? "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" : "Username must be at least 3 characters";
+      }
+      return language === "ar" ? "اسم المستخدم غير صالح" : "Invalid username";
+    }
+    if (field === "fullName") return language === "ar" ? "الاسم الكامل مطلوب" : "Full name is required";
+    if (field === "email") return t.invalidEmail;
+    if (field === "phone") return t.invalidPhone;
+    return message || (language === "ar" ? "تعذر إنشاء الحساب، يرجى مراجعة البيانات" : "Could not create account. Please check your details.");
+  };
+
+  const buildRegisterErrors = (data: RegisterErrorResponse) => {
+    const nextErrors: Record<string, string> = {};
+
+    data.errors?.forEach(({ field = "", message }) => {
+      const rootField = field.split(".")[0];
+      if (!rootField) return;
+      nextErrors[rootField] = getLocalizedBackendError(rootField, message);
+    });
+
+    if (Object.keys(nextErrors).length > 0) {
+      return nextErrors;
+    }
+
+    const message = language === "ar" ? data.message : data.messageEn || data.message;
+    const normalizedMessage = `${data.message ?? ""} ${data.messageEn ?? ""}`.toLowerCase();
+
+    if (normalizedMessage.includes("email") || normalizedMessage.includes("البريد")) {
+      nextErrors.email = message || (language === "ar" ? "البريد الإلكتروني مستخدم بالفعل" : "Email already in use");
+    } else if (normalizedMessage.includes("username") || normalizedMessage.includes("اسم المستخدم")) {
+      nextErrors.username = message || (language === "ar" ? "اسم المستخدم مستخدم بالفعل" : "Username already in use");
+    } else {
+      nextErrors.username = message || (language === "ar" ? "حدث خطأ أثناء إنشاء الحساب" : "Error creating account");
+    }
+
+    return nextErrors;
+  };
 
   const updateFormData = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value });
@@ -157,7 +212,7 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
     if (!formData.username.trim()) newErrors.username = t.required;
     if (!formData.password.trim()) {
       newErrors.password = t.required;
-    } else if (formData.password.length < 8) {
+    } else if (!isPasswordStrong(formData.password)) {
       newErrors.password = t.passwordWeak;
     }
     if (formData.password !== formData.confirmPassword) {
@@ -195,19 +250,23 @@ export default function SignUpPage({ onSignUp, onLoginClick }: SignUpPageProps) 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: formData.username,
+          username: formData.username.trim(),
           password: formData.password,
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
+          fullName: formData.fullName.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
           userType: userType,
         }),
       });
 
-      const data = await response.json();
+      const data = await response.json() as RegisterErrorResponse;
 
       if (!response.ok) {
-        setErrors({ username: data.message || (language === "ar" ? "حدث خطأ أثناء إنشاء الحساب" : "Error creating account") });
+        const nextErrors = buildRegisterErrors(data);
+        setErrors(nextErrors);
+        if (nextErrors.fullName || nextErrors.email || nextErrors.phone) {
+          setStep(2);
+        }
         setIsLoading(false);
         return;
       }
